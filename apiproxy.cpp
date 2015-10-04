@@ -1,5 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
-#pragma comment(linker, "/FILEALIGN:16")
+/*#pragma comment(linker, "/FILEALIGN:16")
 #pragma comment(linker, "/ALIGN:16")// Merge sections
 #pragma comment(linker, "/MERGE:.rdata=.data")
 #pragma comment(linker, "/MERGE:.text=.data")
@@ -7,7 +7,7 @@
 
 // Favour small code
 #pragma optimize("gsy", on)
-
+*/
 /* 
 
   PSYKOOSI - WIN32 API PROXY

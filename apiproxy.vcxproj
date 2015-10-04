@@ -133,12 +133,14 @@
     <ClCompile Include="apiproxy.cpp" />
     <ClCompile Include="bridge.cpp" />
     <ClCompile Include="commands.cpp" />
+    <ClCompile Include="crc.cpp" />
     <ClCompile Include="file.cpp" />
     <ClCompile Include="threads.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bridge.h" />
     <ClInclude Include="commands.h" />
+    <ClInclude Include="crc.h" />
     <ClInclude Include="file.h" />
     <ClInclude Include="structures.h" />
     <ClInclude Include="threads.h" />
