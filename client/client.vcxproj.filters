@@ -1,0 +1,84 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{eed18bb4-9f01-4f44-9078-99dd437e2e8d}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="Source Files\udis86">
+      <UniqueIdentifier>{0252f8e0-3e62-4628-a0b6-483b63955cc2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{03f5c221-cc17-4f87-82eb-997b9dc954a1}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{d3b41f7f-e429-48df-91a7-fd23ae3e0a16}</UniqueIdentifier>
+      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="udis86\decode.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="hooking.cpp">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="udis86\input.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="udis86\itab.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="udis86\syn-att.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="udis86\syn-intel.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="udis86\syn.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="udis86\udis86.c">
+      <Filter>Source Files\udis86</Filter>
+    </ClCompile>
+    <ClCompile Include="client.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\file.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="memorymodule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="udis86\decode.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="udis86\extern.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="udis86\input.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="udis86\itab.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="udis86\syn.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="udis86\types.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="udis86\udis86.h">
+      <Filter>Source Files\udis86</Filter>
+    </ClInclude>
+    <ClInclude Include="hooking.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

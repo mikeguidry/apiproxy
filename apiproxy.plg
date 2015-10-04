@@ -1,0 +1,55 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: apiproxy - Win32 Release--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP69A.tmp" with contents
+[
+/nologo /MT /W3 /GX /O1 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /FR"Release/" /Fp"Release/apiproxy.pch" /YX /Fo"Release/" /Fd"Release/" /FD /opt:ref /c 
+"E:\apiproxy\apiproxy.cpp"
+"E:\apiproxy\bridge.cpp"
+"E:\apiproxy\commands.cpp"
+"E:\apiproxy\crc.cpp"
+"E:\apiproxy\threads.cpp"
+]
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP69A.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP69B.tmp" with contents
+[
+ shlwapi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib /nologo /entry:"WinMain" /subsystem:windows /incremental:no /pdb:"Release/apiproxy.pdb" /machine:I386 /out:"Release/apiproxy.exe" 
+.\Release\apiproxy.obj
+.\Release\bridge.obj
+.\Release\commands.obj
+.\Release\crc.obj
+.\Release\threads.obj
+]
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP69B.tmp"
+<h3>Output Window</h3>
+Compiling...
+apiproxy.cpp
+E:\apiproxy\structures.h(7) : warning C4161: #pragma pack(pop...) : more pops than pushes
+bridge.cpp
+E:\apiproxy\structures.h(7) : warning C4161: #pragma pack(pop...) : more pops than pushes
+E:\apiproxy\bridge.cpp(215) : warning C4101: 'ebuf' : unreferenced local variable
+commands.cpp
+E:\apiproxy\structures.h(7) : warning C4161: #pragma pack(pop...) : more pops than pushes
+E:\apiproxy\commands.cpp(66) : warning C4101: 'fbuf' : unreferenced local variable
+crc.cpp
+threads.cpp
+E:\apiproxy\structures.h(7) : warning C4161: #pragma pack(pop...) : more pops than pushes
+Linking...
+LINK : warning LNK4078: multiple ".data" sections found with different attributes (40000040)
+LINK : warning LNK4078: multiple ".data" sections found with different attributes (60000020)
+Creating command line "bscmake.exe /nologo /o"Release/apiproxy.bsc"  .\Release\apiproxy.sbr .\Release\bridge.sbr .\Release\commands.sbr .\Release\crc.sbr .\Release\threads.sbr"
+Creating browse info file...
+<h3>Output Window</h3>
+
+
+
+<h3>Results</h3>
+apiproxy.exe - 0 error(s), 8 warning(s)
+</pre>
+</body>
+</html>
