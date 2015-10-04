@@ -27,6 +27,8 @@ to test the system we will load a module into memory using a DLL and then proxy 
 #include "../commands.h"
 #include "hooking.h"
 #include "x86_emulate.h"
+#include "../memverify.h"
+#include "../crc.h"
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -43,8 +45,6 @@ this is safe & quick for now and should cover some issues if the emulator doesnt
 (possibly kernel, etc)
 */
 
-int PushRegion(DWORD_PTR start, DWORD_PTR size);
-int PullRegion(DWORD_PTR start, DWORD_PTR size);
 
 
 // linked list of all shadow regions (memory that is to be the same across both processes)
@@ -57,7 +57,15 @@ typedef struct _shadow_region {
 	int verify;
 	// for non verify to only push once
 	int pushed;
+	RegionCRC *LastSync;
 } ShadowRegion;
+
+
+int PushData(DWORD_PTR start, DWORD_PTR size);
+int PushRegion(ShadowRegion *shdw);
+int PullRegion(DWORD_PTR start, DWORD_PTR size);
+
+
 
 ShadowRegion *ShadowList = NULL;
 ShadowRegion *ShadowMem = NULL;
@@ -519,11 +527,25 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 	*/
 
 
+#ifdef SYNC_ALWAYS
 	for (sptr = ShadowList; sptr != NULL; sptr = sptr->next) {
 		//wsprintf(ebuf, "push %p %d\r\n", sptr->address, sptr->size);
 		//OutputDebugString(ebuf);
-		PushRegion(sptr->address, sptr->size);
+		if (!sptr->pushed || !sptr->LastSync) {
+			PushRegion(sptr);
+		} else {
+			// if we already pushed once.. we should only push the difference since our last call
+			CRC_Verify(sptr->LastSync, NULL, 1);
+		}
 	}
+#else
+	for (sptr = ShadowList; sptr != NULL; sptr = sptr->next) {
+		//wsprintf(ebuf, "push %p %d\r\n", sptr->address, sptr->size);
+		//OutputDebugString(ebuf);
+		
+		PushRegion(sptr);
+	}
+#endif
 
 	int func_len = lstrlen(rptr->function) + 1;
 	int mod_len = lstrlen(rptr->module) + 1;
@@ -608,8 +630,8 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 		}
 
 
-		wsprintf(ebuf, "pkt recv size %d [max %d]\r\n", pktsize, max_ret_size);
-		OutputDebugString(ebuf);
+		//wsprintf(ebuf, "pkt recv size %d [max %d]\r\n", pktsize, max_ret_size);
+		//OutputDebugString(ebuf);
 		DWORD_PTR *rval = (DWORD_PTR *)(remoteret + sizeof(ZmqRet));
 		DWORD_PTR *rfix = (DWORD_PTR *)(remoteret + sizeof(ZmqRet) + sizeof(DWORD_PTR));
 		
@@ -622,7 +644,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 
 		// now lets process any modified memory...
 
-		DWORD_PTR MemoryModCount = (rpkt->extra_len - (sizeof(DWORD_PTR)*2)) / (sizeof(DWORD_PTR) * 2);
+		DWORD_PTR MemoryModCount = (rpkt->extra_len - (sizeof(DWORD_PTR)*2)) / (sizeof(DWORD_PTR) + REGION_BLOCK);
 
 		wsprintf(ebuf, "MemorymodCount %d\r\n", MemoryModCount);
 		OutputDebugString(ebuf);
@@ -634,7 +656,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 			DWORD_PTR *rAddr = (DWORD_PTR *)memptr;
 			memptr += sizeof(DWORD_PTR);
 			DWORD_PTR *rData = (DWORD_PTR *)memptr;
-			memptr += sizeof(DWORD_PTR);
+			memptr += REGION_BLOCK;
 
 			// local address is direct (since we're shadowing..)
 			DWORD_PTR *lAddr = (DWORD_PTR *)*rAddr;
@@ -642,11 +664,13 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 			//wsprintf(ebuf, "laddr %p\r\n", lAddr);
 			//OutputDebugString(ebuf);
 
-			DWORD_PTR lData_old = *lAddr;
+			//DWORD_PTR lData_old = *lAddr;
 
 			if (IsValidHeap((LPVOID)lAddr)) {
+
+				CopyMemory(lAddr, rData, REGION_BLOCK);
 				//if ((*rAddr < ctx.Esp) && ((*rAddr < (DWORD_PTR)remoteret) && (*rAddr > ((DWORD_PTR)((char *)remoteret+max_ret_size))))) {
-				*lAddr = *rData;
+				//*lAddr = *rData;
 		
 				//wsprintf(ebuf, "[%p] data %X\r\n", lAddr, *rData);
 				//OutputDebugString(ebuf);
@@ -657,6 +681,19 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 				break;
 			}*/
 		}
+
+#ifdef SYNC_ALWAYS
+		//if (MemoryModCount) {
+			for (sptr = ShadowList; sptr != NULL; sptr = sptr->next) {
+
+				if (sptr->LastSync != NULL) {
+					RegionFree(sptr->LastSync);
+					sptr->LastSync = NULL;
+				}
+				sptr->LastSync = CRC_Region(sptr->address, sptr->size);
+			}
+		//}
+#endif
 
 		//OutputDebugString("done api proxy\r\n");
 		
@@ -990,6 +1027,10 @@ end:;
 BOOL __stdcall myHeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem) {
 LPVOID __stdcall myHeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes) {
 %FUNC_REDIR
+
+  we need some generic tests for determining if functions should stay local/remote
+  also we need to rebase the stack.. or work better with local variables being transferred (which would
+  have a very close address.. therefore our space copying would affect it)
 */
 struct _func_redirect {
 	char *module_name;
@@ -1168,7 +1209,7 @@ int BuildImportTable2(PMEMORYMODULE module)
 					if (StrStrI(fname, "MessageBoxA") != NULL || 1==1) {
 						*funcRef = (FARPROC)RedirectProcAddress(name,handle, (char *)IMAGE_ORDINAL(*thunkRef));
 					} else {
-						OutputDebugString("\r\nHook CHK\r\n");
+						//OutputDebugString("\r\nHook CHK\r\n");
 						FARPROC a = (FARPROC)GetProcAddress(handle, fname);
 						*funcRef = a;
 					}
@@ -1176,11 +1217,11 @@ int BuildImportTable2(PMEMORYMODULE module)
 					PIMAGE_IMPORT_BY_NAME thunkData = (PIMAGE_IMPORT_BY_NAME) (codeBase + (*thunkRef));
 					char *fname = (char *)(&thunkData->Name);
 					if (StrStrI(fname, "MessageBoxA") != NULL || 1==1) {
-						OutputDebugString(fname);
-						OutputDebugString("\r\nHook\r\n");
+						//OutputDebugString(fname);
+						//OutputDebugString("\r\nHook\r\n");
 						*funcRef = (FARPROC)RedirectProcAddress(name,handle, (char *)&thunkData->Name);
 					} else {
-						OutputDebugString("\r\nHook CHK\r\n");
+						//OutputDebugString("\r\nHook CHK\r\n");
 						FARPROC a = (FARPROC)GetProcAddress(handle, fname);
 						*funcRef = a;
 					}
@@ -1203,7 +1244,7 @@ int BuildImportTable2(PMEMORYMODULE module)
 
 
 // copy all shadow memory to the remote side
-int PushRegion(DWORD_PTR start, DWORD_PTR size) {
+int PushData(DWORD_PTR start, DWORD_PTR size) {
 	int r = 0;
 	DWORD_PTR ret = 0;
 	int count = size;
@@ -1213,6 +1254,95 @@ int PushRegion(DWORD_PTR start, DWORD_PTR size) {
 	int sent = 0;
 	int s = 0;
 	char *ptr = NULL;
+
+	//OutputDebugString("pushing partial packet of data\r\n");
+
+	//split
+	int pkt_len = sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer) + split;
+	if ((ptr = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, pkt_len + 1)) == NULL) {
+		return -1;
+	}
+	ZmqHdr *hdr = (ZmqHdr *)(ptr);
+	ZmqPkt *pkt = (ZmqPkt *)((char *)ptr + sizeof(ZmqHdr));
+	MemTransfer *minfo = (MemTransfer *)((char *)ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt));
+	char ebuf[1024];
+	
+	while (left > 0) {
+		
+		sending = min(split, left);
+		
+		hdr->len = sizeof(ZmqPkt) + sizeof(MemTransfer) + sending;
+		pkt->len = sizeof(ZmqPkt) + sizeof(MemTransfer) + sending;
+		
+		hdr->type = MEM_PUSH;
+		pkt->cmd = MEM_PUSH;
+		minfo->cmd = MEM_PUSH;
+		
+		
+		// memory information required to allocate remotely..
+		minfo->addr = (void *)((DWORD_PTR)start + sent);
+		minfo->len = sending;
+		char *dst = (char *)(ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer));
+		char *src = (char *)(start + sent);
+		
+		//wsprintf(ebuf, "src %p dst %p size %d\r\n", src, dst, sending);
+		//OutputDebugString(ebuf);
+		//CopyMemory((void *)dst, (void *)src, sending-1);
+		for (int a = 0; a < sending; a++) {
+			dst[a] = src[a];
+		}
+		
+		//wsprintf(ebuf, "MEM PUSH size %d sent %d left %d count %d split %d - sending %d @%p\r\n", size, sent, left, count, split, sending, minfo->addr);
+		//OutputDebugString(ebuf);
+		
+		if ((s = send(proxy_sock, ptr, hdr->len + sizeof(ZmqHdr), 0)) < pkt->len) {
+			// we need some global fatal variables..
+			return -1;
+		}
+		
+		if ((r = recv(proxy_sock, ptr, pkt_len, 0)) < sizeof(ZmqRet)) {
+			// we need some global fatal variables..
+			return -1;
+		}
+		
+		ZmqRet *retpkt = (ZmqRet *)ptr;
+		if (retpkt->response == 1) {
+			//OutputDebugString("MEM PUSH OK\r\n");
+			//__asm int 3
+			//ExitProcess(0);
+			sent += sending;
+			left -= sending;
+		}
+		else {
+			
+			wsprintf(ebuf, "MEM PUSH FAIL addr %p", start + sent);
+			__asm int 3
+				break;
+			
+			
+		}
+	}
+	
+	if (sent == size) {
+		ret = 1;
+	}
+	
+	return ret;
+}
+
+// copy all shadow memory to the remote side
+int PushRegion(ShadowRegion *shdw) {
+	int r = 0;
+	DWORD_PTR ret = 0;
+	int size = shdw->size;
+	int count = size;
+	int split = (1024 * 1024 * 8);
+	int left = size;
+	int sending = 0;
+	int sent = 0;
+	int s = 0;
+	char *ptr = NULL;
+	char *start = (char *)shdw->address;
 																			//split
 	int pkt_len = sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer) + split;
 	if ((ptr = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, pkt_len + 1)) == NULL) {
@@ -1273,14 +1403,17 @@ int PushRegion(DWORD_PTR start, DWORD_PTR size) {
 			
 			wsprintf(ebuf, "MEM PUSH FAIL addr %p", start + sent);
 			__asm int 3
-			// MessageBox(0, ebuf, "hmm", 0);
 			break;
 
 			
 		}
 	}
 
-	if (sent == size) ret = 1;
+	if (sent == size) {
+		shdw->pushed = 1;
+		ret = 1;
+		shdw->LastSync = CRC_Region(shdw->address, shdw->size);
+	}
 
 	return ret;
 }
@@ -1543,8 +1676,8 @@ int ProxyConnect() {
 	if ((proxy_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) return -1;
 
 	proxy_addr.sin_family = AF_INET;                
-    //proxy_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	proxy_addr.sin_addr.s_addr = inet_addr("192.168.1.160");
+    proxy_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	//proxy_addr.sin_addr.s_addr = inet_addr("192.168.1.160");
     proxy_addr.sin_port = htons(5555);
 
 	if (connect(proxy_sock,(const struct sockaddr *) &proxy_addr, sizeof(struct sockaddr_in)) != 0) {
@@ -1662,6 +1795,7 @@ void WINAPI addregi(DWORD_PTR Address, DWORD_PTR Size) {
 
 
 int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+	chksum_crc32gentab();
 	char ebuf[1024];
 	/*
 		HMODULE mod_emu;

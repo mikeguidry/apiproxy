@@ -110,5 +110,3 @@ typedef struct _thread_info {
 	CRITICAL_SECTION CS;
 	CRITICAL_SECTION QCS;
 } ThreadInfo;
-
-#define REGION_BLOCK sizeof(unsigned int)
