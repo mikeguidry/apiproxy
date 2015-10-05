@@ -160,6 +160,10 @@ SOURCE=..\crc.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\customheap.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=..\file.cpp
 # End Source File
 # Begin Source File
@@ -174,10 +178,22 @@ SOURCE=.\memorymodule.cpp
 
 SOURCE=..\memverify.cpp
 # End Source File
+# Begin Source File
+
+SOURCE=.\remote_commands.cpp
+# End Source File
 # End Group
 # Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
+# Begin Source File
+
+SOURCE=.\client_structures.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\customheap.h
+# End Source File
 # Begin Source File
 
 SOURCE=.\hooking.h
@@ -185,6 +201,10 @@ SOURCE=.\hooking.h
 # Begin Source File
 
 SOURCE=.\MemoryModule.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\remote_commands.h
 # End Source File
 # End Group
 # Begin Group "Resource Files"

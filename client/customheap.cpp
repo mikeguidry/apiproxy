@@ -87,11 +87,13 @@ LPVOID CustomHeapAlloc(ClientThreadInfo *tinfo, SIZE_T size) {
 
 		hptr->next = aptr->HeapList;
 		aptr->HeapList = hptr;
+		break;
 	}
 
-	wsprintf(ebuf, "CustomHeapAlloc [%d] returning %p\r\n", size, hptr->address);
+	wsprintf(ebuf, "CustomHeapAlloc [%d] returning %p [aptr %p hptr %p]\r\n", size, hptr->address, aptr, hptr);
 	OutputDebugString(ebuf);
 
+//	__asm int 3
 	return (void *)hptr->address;
 }
 
@@ -110,6 +112,7 @@ BOOL CustomHeapIsValidHeap(ClientThreadInfo *tinfo, LPVOID address) {
 	return false;
 }
 
+
 BOOL CustomHeapFree(ClientThreadInfo *tinfo, DWORD_PTR address) {
 	CustomHeap *hptr = NULL;
 	char ebuf[1024];
@@ -127,7 +130,7 @@ BOOL CustomHeapFree(ClientThreadInfo *tinfo, DWORD_PTR address) {
 	if (hptr == NULL) return false;
 	hptr->free = 1;
 	// lets free.. in case we sync the shadow memory
-	ZeroMemory((void *)hptr->address, hptr->size);
+	//ZeroMemory((void *)hptr->address, hptr->size);
 	//maybe tell the remote side to zero memory here too!
 	return true;
 }

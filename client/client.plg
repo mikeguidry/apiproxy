@@ -6,15 +6,13 @@
 --------------------Configuration: client - Win32 Debug--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP7C2.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPAC3.tmp" with contents
 [
 /nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_MBCS" /D "APICLIENT" /D "SYNC_ALWAYS" /Fp"Debug/client.pch" /YX /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
 "E:\apiproxy\client\client.cpp"
-"E:\apiproxy\client\memorymodule.cpp"
-"E:\apiproxy\memverify.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP7C2.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP7C3.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPAC3.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPAC4.tmp" with contents
 [
 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib /nologo /entry:"WinMain" /subsystem:windows /incremental:yes /pdb:"Debug/client.pdb" /debug /machine:I386 /out:"Debug/client.exe" /pdbtype:sept 
 .\Debug\decode.obj
@@ -26,40 +24,30 @@ kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32
 .\Debug\udis86.obj
 .\Debug\client.obj
 .\Debug\crc.obj
+.\Debug\customheap.obj
 .\Debug\file.obj
 .\Debug\hooking.obj
 .\Debug\memorymodule.obj
 .\Debug\memverify.obj
+.\Debug\remote_commands.obj
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP7C3.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSPAC4.tmp"
 <h3>Output Window</h3>
 Compiling...
 client.cpp
-e:\apiproxy\structures.h(7) : warning C4161: #pragma pack(pop...) : more pops than pushes
-e:\apiproxy\client\x86_emulate.h(92) : warning C4161: #pragma pack(pop...) : more pops than pushes
-e:\apiproxy\client\client.cpp(249) : warning C4405: 'ret' : identifier is reserved word
-e:\apiproxy\client\client.cpp(378) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(621) : warning C4018: '<' : signed/unsigned mismatch
-e:\apiproxy\client\client.cpp(655) : warning C4018: '<' : signed/unsigned mismatch
-e:\apiproxy\client\client.cpp(1097) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(1178) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(1326) : warning C4018: '==' : signed/unsigned mismatch
-e:\apiproxy\client\client.cpp(1503) : warning C4018: '==' : signed/unsigned mismatch
-e:\apiproxy\client\client.cpp(1623) : warning C4101: 'fbuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(1799) : warning C4101: 'ebuf' : unreferenced local variable
-memorymodule.cpp
-e:\apiproxy\client\memorymodule.cpp(292) : warning C4101: 'locationDelta' : unreferenced local variable
-e:\apiproxy\client\memorymodule.cpp(291) : warning C4101: 'headers' : unreferenced local variable
-e:\apiproxy\client\memorymodule.cpp(291) : warning C4101: 'code' : unreferenced local variable
-memverify.cpp
-e:\apiproxy\memverify.cpp(11) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\memverify.cpp(47) : warning C4101: 'ebuf' : unreferenced local variable
+E:\apiproxy\client\client.cpp(155) : warning C4405: 'ret' : identifier is reserved word
+E:\apiproxy\client\client.cpp(540) : warning C4018: '<' : signed/unsigned mismatch
+E:\apiproxy\client\client.cpp(574) : warning C4018: '<' : signed/unsigned mismatch
+E:\apiproxy\client\client.cpp(1023) : warning C4101: 'ebuf' : unreferenced local variable
+E:\apiproxy\client\client.cpp(1104) : warning C4101: 'ebuf' : unreferenced local variable
+E:\apiproxy\client\client.cpp(1289) : warning C4101: 'fbuf' : unreferenced local variable
+E:\apiproxy\client\client.cpp(1466) : warning C4101: 'ebuf' : unreferenced local variable
 Linking...
 
 
 
 <h3>Results</h3>
-client.exe - 0 error(s), 17 warning(s)
+client.exe - 0 error(s), 7 warning(s)
 </pre>
 </body>
 </html>

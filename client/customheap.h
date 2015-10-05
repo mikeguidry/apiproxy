@@ -18,5 +18,3 @@ BOOL CustomHeapIsValidHeap(ClientThreadInfo *,LPVOID address);
 LPVOID CustomHeapAlloc(ClientThreadInfo *,SIZE_T size);
 
 
-#define SECmem EnterCriticalSection(&CSmemory);
-#define DESECmem LeaveCriticalSection(&CSmemory);
