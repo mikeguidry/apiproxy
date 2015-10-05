@@ -22,6 +22,7 @@ to test the system we will load a module into memory using a DLL and then proxy 
 #include <shlwapi.h>
 #include "memorymodule.h"
 #include <winsock.h>
+
 #include "../file.h"
 #include "../structures.h"
 #include "../commands.h"
@@ -29,8 +30,27 @@ to test the system we will load a module into memory using a DLL and then proxy 
 #include "x86_emulate.h"
 #include "../memverify.h"
 #include "../crc.h"
+#include "client_structures.h"
+
+#include "customheap.h"
+
+#include "remote_commands.h"
+
 
 #pragma comment(lib, "shlwapi.lib")
+
+DWORD tlsThreadID = 0;
+
+
+ClientThreadInfo *MainThread = NULL;
+ClientThreadInfo *ThreadList = NULL;
+
+
+ClientThreadInfo *TrickFindThread() {
+	ClientThreadInfo *tptr = (ClientThreadInfo *)TlsGetValue(tlsThreadID);
+	return tptr;
+}
+
 
 
 
@@ -47,179 +67,64 @@ this is safe & quick for now and should cover some issues if the emulator doesnt
 
 
 
-// linked list of all shadow regions (memory that is to be the same across both processes)
-typedef struct _shadow_region {
-	struct _shadow_region *next;
-	DWORD_PTR address;
-	SIZE_T size;
-	// constantly determine if it has changed between calls and reupload modifications
-	// using checksums on smaller amount of bytes
-	int verify;
-	// for non verify to only push once
-	int pushed;
-	RegionCRC *LastSync;
-} ShadowRegion;
-
-
-int PushData(DWORD_PTR start, DWORD_PTR size);
-int PushRegion(ShadowRegion *shdw);
-int PullRegion(DWORD_PTR start, DWORD_PTR size);
-
-
-
-ShadowRegion *ShadowList = NULL;
-ShadowRegion *ShadowMem = NULL;
-
 // how much space do we believe our entire app will take (heap/stack/data/etc simul)
 #define REGION_SIZE 1024 * 1024 * 16
 
-// MemRange = REGION allocated address
-DWORD_PTR MemRange = 0;
-// stack base = base of stack, stack high = high ...
-DWORD_PTR StackLow = 0, StackHigh = 0;
-// heap base = first address of a heap allocation (if heap last = 0 then its blank... and
-// when we allocate.. we create a CustomHeap, and change heaplast to the next byte after that custom heap entry)
-DWORD_PTR HeapBase = 0, HeapLast = 0, HeapMax = 0;
-
-typedef struct _custom_heap {
-	struct _custom_heap *next;
-	DWORD_PTR address;
-	SIZE_T size;
-	int free;
-}CustomHeap;
-
-CustomHeap *HeapList = NULL;
-
-
-
-// allocate space in the heap region using a custom allocator...
-// do not move any heap around once we have given out the address....
-// if a free occurs, zero the memory and find the closest length for the next allocation in 
-// free'd or give new and increase the region
-LPVOID CustomHeapAlloc(SIZE_T size) {
-	char ebuf[1024];
-	//wsprintf(ebuf, "CustomHeapAlloc %d\r\n", size);
-	//OutputDebugString(ebuf);
-
-	CustomHeap *hptr = NULL;
-
-	DWORD_PTR SpaceLeft = HeapMax - HeapLast;
-
-	if (SpaceLeft <= 0) {
-		for (hptr = HeapList; hptr != NULL; hptr = hptr->next) {
-			// if free'd heap.. can we take this place??
-			if (hptr->free && size <= hptr->size) {
-
-				DWORD_PTR SizeLeft = (hptr->size - size);
-				// if the size left after we give out this block again is more than 16k..
-				// lets put it up for grabs..
-				if (SizeLeft > (1024 * 16)) {
-					CustomHeap *leftover = (CustomHeap *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(CustomHeap));
-					if (leftover != NULL) {
-						leftover->address = hptr->address + size;
-						leftover->size = SizeLeft;
-
-						leftover->next = HeapList;
-						HeapList = leftover;
-					}
-				}
-				hptr->size = size;
-
-	
-				wsprintf(ebuf, "CustomHeapAlloc [%d] returning %p\r\n", size, hptr->address);
-				OutputDebugString(ebuf);
-
-				return (void *) hptr->address;
-			}
-
-		}
-	}
-
-
-	if ((hptr = (CustomHeap *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(CustomHeap))) == NULL) {
-			wsprintf(ebuf, "CustomHeapAlloc FATAL was asking for %d\r\n", size);
-			OutputDebugString(ebuf);
-
-			// fatal!
-			return 0;
-	}
-
-	hptr->size = size;
-
-	if (HeapLast == 0) {
-		hptr->address = HeapBase;
-	} else {
-		hptr->address = HeapLast;
-	}
-
-	HeapLast = hptr->address + size;
-
-	// ensure we free the space.. fuzzing = fine.. but backdoors. we dont want that memory getting transferred during shadow copy/sync
-	ZeroMemory((void *)hptr->address, size);
-
-	hptr->next = HeapList;
-	HeapList = hptr;
-
-	wsprintf(ebuf, "CustomHeapAlloc [%d] returning %p\r\n", size, hptr->address);
-	OutputDebugString(ebuf);
-
-	return (void *)hptr->address;
-}
-
-BOOL IsValidHeap(LPVOID address) {
-	CustomHeap *hptr = NULL;
-	for (hptr = HeapList; hptr != NULL; hptr = hptr->next) {
-		if (!hptr->free && ((DWORD_PTR)address >= hptr->address) && ((DWORD_PTR)address < (hptr->address + hptr->size))) {
-			return true;
-		}
-	}
-	if (hptr == NULL)
-		return false;
-	return false;
-}
-
-BOOL CustomHeapFree(LPVOID address) {
-	char ebuf[1024];
-	wsprintf(ebuf, "CustomHeapFree %p\r\n", address);
-	OutputDebugString(ebuf);
-	CustomHeap *hptr = NULL;
-	for (hptr = HeapList; hptr != NULL; hptr = hptr->next) {
-		if (!hptr->free && hptr->address == (DWORD_PTR)address) {
-			break;
-		}
-	}
-	if (hptr == NULL) return false;
-	hptr->free = 1;
-	// lets free.. in case we sync the shadow memory
-	ZeroMemory((void *)hptr->address, hptr->size);
-	return true;
-}
 
 // our allocators so we can drop in replace in IAT
 BOOL __stdcall myHeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem) {
-	return CustomHeapFree(lpMem);
+	return CustomHeapFree(MainThread, (DWORD_PTR)lpMem);
 }
 LPVOID __stdcall myHeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes) {
-	return CustomHeapAlloc(dwBytes);
-
+	return CustomHeapAlloc(MainThread,dwBytes);
 }
+
+LPVOID __stdcall myVirtualAlloc(LPVOID lpAddress,SIZE_T dwSize,DWORD flAllocationType,DWORD flProtect) {
+	return CustomHeapAlloc(MainThread,dwSize);
+}
+
+BOOL __stdcall myVirtualFree(LPVOID lpAddress,SIZE_T dwSize,DWORD dwFreeType) {
+	return CustomHeapFree(MainThread,(DWORD_PTR)lpAddress);
+}
+
+
+BOOL __stdcall myVirtualProtect(LPVOID lpAddress,SIZE_T dwSize,DWORD flNewProtect,PDWORD lpflOldProtect) {
+	return 1;
+}
+
+
+ClientThreadInfo *Thread_New() {
+	ClientThreadInfo *cptr = (ClientThreadInfo *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ClientThreadInfo));
+	if (cptr == NULL) {
+		__asm int 3
+		ExitProcess(0);
+	}
+
+	
+
+	return cptr;
+}
+
 
 
 CONTEXT ctxBefore;
 // we want these in global so its not affected by ESP/EBP (itll be in global data section)
 DWORD_PTR backup_ebp = 0, backup_esp = 0;
 
+
+
 // prepare stack with our custom shadow areas....
 // hack for now.. but we should start a new thread and setup the new thread to use the shadow... and let it exit quietly
 // this needs to setup the stack.. and call a function (maybe the module's entry point..) and have it return right back, to get fixed and move on
-int TrickStackExec(void *code, void *func) {
+int TrickStackExec(ClientThreadInfo *tinfo,void *code, void *func) {
 	int ret = 0;
 	
 	//CONTEXT ctxAfter;
 	
+	TlsSetValue(tlsThreadID, (void *)tinfo);
 
 	// trick to do int3 if it messes up for now...
-	DWORD_PTR *_StackHigh = (DWORD_PTR *)StackHigh;
+	DWORD_PTR *_StackHigh = (DWORD_PTR *)tinfo->StackHigh;
 	*_StackHigh-- = 0xAAAAAAAA;
 	*_StackHigh-- = 0xBBBBBBBB;
 	*_StackHigh-- = 0xCCCCCCCC;
@@ -227,7 +132,7 @@ int TrickStackExec(void *code, void *func) {
 	//DWORD_PTR *A = (DWORD_PTR *)(StackHigh - sizeof(DWORD_PTR));
 	//*A-- = StackHigh; *A-- = StackHigh; *A-- = StackHigh; *A-- = StackHigh;
 
-	DWORD_PTR StartStack = (DWORD_PTR)((DWORD_PTR)StackHigh - (sizeof(DWORD_PTR) * 4));
+	DWORD_PTR StartStack = (DWORD_PTR)((DWORD_PTR)tinfo->StackHigh - (sizeof(DWORD_PTR) * 4));
 	RtlCaptureContext(&ctxBefore);
 	__asm {
 		//int 3
@@ -244,6 +149,7 @@ int TrickStackExec(void *code, void *func) {
 		push 0
 		push 1
 		push ebx
+
 		call ecx
 
 		mov ret, eax
@@ -265,64 +171,80 @@ int TrickStackExec(void *code, void *func) {
 }
 
 
+
+
+CustomHeapArea *CustomArea_init(ClientThreadInfo *tinfo, DWORD_PTR RangeStart, DWORD_PTR Size) {
+	
+	CustomHeapArea *aptr = (CustomHeapArea *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(CustomHeapArea));
+	if (aptr == NULL) {
+		__asm int 3
+			ExitProcess(0);
+	}
+	
+	
+	aptr->next = (CustomHeapArea *)tinfo->memory_areas;
+	tinfo->memory_areas = (void *)aptr;
+	
+	//LeaveCriticalSection(&tinfo->CSmemory);
+	
+	return aptr;
+}
+
+
+
+
 // separate our memory for usage within the application
-void SetupMemory(DWORD_PTR RangeStart, DWORD_PTR Size) {
+void SetupMemory(ClientThreadInfo *tinfo, DWORD_PTR RangeStart, DWORD_PTR Size) {
 
+	CustomHeapArea *aptr = CustomArea_init(tinfo, RangeStart, Size);
 	// setup base for all memory..
+	if (aptr == NULL) {
+		__asm int 3
+		ExitProcess(0);
+	}
 
-	MemRange = RangeStart;
 	// set stack to start 32kb under the high part of the memory.. no real reason..for the 32kb
-	StackHigh = (RangeStart + Size) - (1024 * 32);
+	tinfo->StackHigh = (RangeStart + Size) - (1024 * 32);
 	// lets give it 5 megabytes.. we should split this up later for multiple threads.. maybe separate heap/stack
-	StackLow = StackHigh - (1024 * 1024 * 5);
+	tinfo->StackLow = tinfo->StackHigh - (1024 * 1024 * 5);
 
 	// now for heap...
-	HeapMax = StackLow - (1024 * 32);
-	HeapBase = RangeStart;
+	aptr->HeapMax = tinfo->StackLow - (1024 * 32);
+	aptr->HeapBase = RangeStart;
 	// new!
-	HeapLast = 0;
+	aptr->HeapLast = 0;
 
 	ShadowRegion *rptr = (ShadowRegion *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ShadowRegion));
 	if (rptr != NULL) {
 		rptr->address = RangeStart;
 		rptr->size = Size;
 		rptr->verify = 1;
-		ShadowMem = rptr;
+		tinfo->ShadowMem = rptr;
 
-		rptr->next = ShadowList;
-		ShadowList = rptr;
+		rptr->next = tinfo->ShadowList;
+		tinfo->ShadowList = rptr;
 	}
 	else {
 		__asm int 3
 		ExitProcess(0);
 	}
+
+	//LeaveCriticalSection(&tinfo->CSmemory);
 }
 
-int shadow_add(DWORD_PTR Start, DWORD_PTR Size, int verify) {
+
+int shadow_add(ClientThreadInfo *tinfo, DWORD_PTR Start, DWORD_PTR Size, int verify) {
 	ShadowRegion *rptr = (ShadowRegion *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ShadowRegion));
 	if (rptr == NULL) return 0;
 	rptr->address = Start;
 	rptr->size = Size;
 	rptr->verify = verify;
 
-	rptr->next = ShadowList;
-	ShadowList = rptr;
+	rptr->next = tinfo->ShadowList;
+	tinfo->ShadowList = rptr;
 	return 1;
 }
 
-typedef struct _redirects {
-	struct _redirects *next;
-	DWORD_PTR addr;
-	char *module;
-	char *function;
-	int cleanup;
-} Redirect;
-
-typedef struct _pkt {
-	int module_len;
-	int func_len;
-	int arg_size;
-} ExecPkt;
 
 CRITICAL_SECTION CS_redirect;
 Redirect *redirect_list = NULL;
@@ -365,19 +287,15 @@ int AddrInStack(DWORD_PTR addr) {
 	return 0;
 }
 
-void ensure_init() {
-	if (!InterlockedExchangeAdd(&first_redirect,1)) InitializeCriticalSection(&CS_redirect);
-}
 
 // finds a function's redirect (so we have the real name, and library)
 Redirect *redirect_search(DWORD_PTR func) {
 	Redirect *ret = NULL;
 
-	ensure_init();
 
 	char ebuf[1024];
-	//wsprintf(ebuf, "searhc %p\r\n", func);
-	//OutputDebugString(ebuf);
+	wsprintf(ebuf, "searhc %p\r\n", func);
+	OutputDebugString(ebuf);
 	EnterCriticalSection(&CS_redirect);
 
 	Redirect *rptr = redirect_list;
@@ -432,13 +350,13 @@ Redirect *redirect_add(DWORD_PTR func, char *module_name, char *function_name) {
 	return rptr;
 }
 
-Parameters *param_list = NULL, *param_last = NULL;
+//Parameters *param_list = NULL, *param_last = NULL;
 
 // we should send over stack usnig relative addresses.. so if we copy 64 bytes of the stack and some addresses are relative.. itll fix that on the other side
 // using the real stack addresses
 
 
-
+/*
 // insert param into list
 void param_insert(Parameters *pptr) {
 	if (param_last == NULL) {
@@ -496,7 +414,7 @@ int add_param(DWORD_PTR addr) {
 }
 
 
-
+*/
 
 
 int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
@@ -510,6 +428,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 	ShadowRegion *sptr = NULL;
 	CONTEXT ctx;
 	RtlCaptureContext(&ctx);
+	ClientThreadInfo *tinfo = TrickFindThread();
 	
 	// we dont know if this space is zero.. so lets fix
 	*ret_fix = 0;
@@ -528,7 +447,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 
 
 #ifdef SYNC_ALWAYS
-	for (sptr = ShadowList; sptr != NULL; sptr = sptr->next) {
+	for (sptr = tinfo->ShadowList; sptr != NULL; sptr = sptr->next) {
 		//wsprintf(ebuf, "push %p %d\r\n", sptr->address, sptr->size);
 		//OutputDebugString(ebuf);
 		if (!sptr->pushed || !sptr->LastSync) {
@@ -539,7 +458,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 		}
 	}
 #else
-	for (sptr = ShadowList; sptr != NULL; sptr = sptr->next) {
+	for (sptr = tinfo->ShadowList; sptr != NULL; sptr = sptr->next) {
 		//wsprintf(ebuf, "push %p %d\r\n", sptr->address, sptr->size);
 		//OutputDebugString(ebuf);
 		
@@ -569,10 +488,10 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 		cinfo->arg_len = arg_size;
 		cinfo->ESP = ctx.Esp;
 		cinfo->EBP = ctx.Ebp;
-		cinfo->Region = ShadowMem->address;
-		cinfo->Region_Size = ShadowMem->size;
+		cinfo->Region = tinfo->ShadowMem->address;
+		cinfo->Region_Size = tinfo->ShadowMem->size;
 
-		wsprintf(ebuf, "remote_call param: region %p region size %d\r\n", cinfo->Region, cinfo->Region_Size);
+		wsprintf(ebuf, "remote_call %s param: region %p region size %d\r\n", rptr->function, cinfo->Region, cinfo->Region_Size);
 		OutputDebugString(ebuf);
 
 		// copy information to newly allocated pkt.. behind it.. stack args, module, and func
@@ -666,7 +585,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 
 			//DWORD_PTR lData_old = *lAddr;
 
-			if (IsValidHeap((LPVOID)lAddr)) {
+			if (CustomHeapIsValidHeap(MainThread,(LPVOID)lAddr)) {
 
 				CopyMemory(lAddr, rData, REGION_BLOCK);
 				//if ((*rAddr < ctx.Esp) && ((*rAddr < (DWORD_PTR)remoteret) && (*rAddr > ((DWORD_PTR)((char *)remoteret+max_ret_size))))) {
@@ -684,11 +603,10 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 
 #ifdef SYNC_ALWAYS
 		//if (MemoryModCount) {
-			for (sptr = ShadowList; sptr != NULL; sptr = sptr->next) {
+			for (sptr = tinfo->ShadowList; sptr != NULL; sptr = sptr->next) {
 
 				if (sptr->LastSync != NULL) {
-					RegionFree(sptr->LastSync);
-					sptr->LastSync = NULL;
+					RegionFree(&sptr->LastSync);
 				}
 				sptr->LastSync = CRC_Region(sptr->address, sptr->size);
 			}
@@ -779,7 +697,7 @@ __declspec(naked) void RedirectFunction_help(void) {
 
 		//int 3
 		// fix our pushes (func, stack, and ret cleanup)
-		add esp, 12
+		add esp, 16
 
 		// put in ecx amount of bytes changed..
 		mov ebx, [ebp - 4]
@@ -1037,25 +955,32 @@ struct _func_redirect {
 	char *func_name;
 	void *func_addr;
 } FuncRedirect[] = {
-	{"kernel32","HeapAlloc", (void *)&myHeapAlloc },
-	{"kernel32", "HeapFree", (void *)&myHeapFree },
-	{"user", "wsprint", 0 },
-	{"kernel32", "GetVersion", 0 },
-	{"kernel32", "heap", 0 },
-	{"kernel32", "environmentstr", 0 },
-	{"kernel32", "getcommand", 0 },
-	{"kernel32", "multibyte", 0 },
-	{"kernel32", "sethandle", 0 },
-	{"kernel32", "getstdhandle", 0 },
-	{"kernel32", "startupinfo", 0 },
-	{"kernel32", "getfiletype", 0 },
-	{"kernel32", "getacp", 0 },
-	{"kernel32", "getcpinfo", 0 },
-	{"kernel32", "getstring", 0 },
-	{"kernel32", "lcmapstring", 0 },
-	{"kernel32", "getmodule", 0 },
-	{"kernel32", "exitproc", 0 },
-	{"kernel32", "exitthread", 0 },
+	// functions that need to use custom heap..
+	{"kernel32",	"HeapAlloc", (void *)&myHeapAlloc },
+	{"kernel32",	"HeapFree", (void *)&myHeapFree },
+	{"kernel32",	"VirtualAlloc", (void *)&myHeapAlloc },
+	{"kernel32",	"VirtualFree", (void *)&myHeapFree },
+	{"kernel32",	"VirtualProtect", (void *)&myVirtualProtect },
+	// customs we want locally for testing.. we should expand this to a wide variety...
+	// somehow automate the process to determine if its a string function, or something requiring of system
+	// maybe emulating functions and caching whether it goes on to using other DLLs.. if not then we can do locally
+	{"kernel32",	"heap", 0 },
+	{"user",		"wsprint", 0 },
+	{"kernel32",	"exitproc", 0 },
+	{"kernel32",	"exitthread", 0 },
+	{"kernel32",	"GetVersion", 0 },
+	{"kernel32",	"environmentstr", 0 },
+	{"kernel32",	"getcommand", 0 },
+	{"kernel32",	"multibyte", 0 },
+	{"kernel32",	"sethandle", 0 },
+	{"kernel32",	"getstdhandle", 0 },
+	{"kernel32",	"startupinfo", 0 },
+	{"kernel32",	"getfiletype", 0 },
+	{"kernel32",	"getacp", 0 },
+	{"kernel32",	"getcpinfo", 0 },
+	{"kernel32",	"getstring", 0 },
+	{"kernel32",	"lcmapstring", 0 },
+	{"kernel32",	"getmodule", 0 },
 	{ NULL, NULL, NULL }
 };
 
@@ -1067,19 +992,20 @@ FARPROC RedirGetAddr(char *module, char *function, int *found) {
 		// check moduile name
 		if (StrStrI(module, FuncRedirect[i].module_name) != NULL) {
 			// check func name
-			if (StrStrI(function, FuncRedirect[i].func_name)) {
+			if (StrStrI(function, FuncRedirect[i].func_name) || (StrCmpA(function, FuncRedirect[i].func_name) == 0)) {
 				// if we found it.. we consider skip (meaning skip building a stub)
 				*found = 1;
 
 				// if we have our own version.. use it
 				if (FuncRedirect[i].func_addr != 0) {
-					wsprintf(ebuf, "Returning redirected %s [%s] -> %p\r\n", function, module, FuncRedirect[i].func_addr);
+					wsprintf(ebuf, "Returning redirected (remote) %s [%s] -> %p\r\n", function, module, FuncRedirect[i].func_addr);
 					OutputDebugString(ebuf);
 
 					return (FARPROC)FuncRedirect[i].func_addr;
 				} else {
 					// return the normal
-					OutputDebugString("returning non hook\r\n");
+					wsprintf(ebuf, "Returning original function (locally) %s\r\n", function);
+					OutputDebugString(ebuf);
 
 					return (FARPROC)GetProcAddress(GetModuleHandle(module), function);
 				}
@@ -1243,267 +1169,6 @@ int BuildImportTable2(PMEMORYMODULE module)
 }
 
 
-// copy all shadow memory to the remote side
-int PushData(DWORD_PTR start, DWORD_PTR size) {
-	int r = 0;
-	DWORD_PTR ret = 0;
-	int count = size;
-	int split = (1024 * 1024 * 8);
-	int left = size;
-	int sending = 0;
-	int sent = 0;
-	int s = 0;
-	char *ptr = NULL;
-
-	//OutputDebugString("pushing partial packet of data\r\n");
-
-	//split
-	int pkt_len = sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer) + split;
-	if ((ptr = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, pkt_len + 1)) == NULL) {
-		return -1;
-	}
-	ZmqHdr *hdr = (ZmqHdr *)(ptr);
-	ZmqPkt *pkt = (ZmqPkt *)((char *)ptr + sizeof(ZmqHdr));
-	MemTransfer *minfo = (MemTransfer *)((char *)ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt));
-	char ebuf[1024];
-	
-	while (left > 0) {
-		
-		sending = min(split, left);
-		
-		hdr->len = sizeof(ZmqPkt) + sizeof(MemTransfer) + sending;
-		pkt->len = sizeof(ZmqPkt) + sizeof(MemTransfer) + sending;
-		
-		hdr->type = MEM_PUSH;
-		pkt->cmd = MEM_PUSH;
-		minfo->cmd = MEM_PUSH;
-		
-		
-		// memory information required to allocate remotely..
-		minfo->addr = (void *)((DWORD_PTR)start + sent);
-		minfo->len = sending;
-		char *dst = (char *)(ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer));
-		char *src = (char *)(start + sent);
-		
-		//wsprintf(ebuf, "src %p dst %p size %d\r\n", src, dst, sending);
-		//OutputDebugString(ebuf);
-		//CopyMemory((void *)dst, (void *)src, sending-1);
-		for (int a = 0; a < sending; a++) {
-			dst[a] = src[a];
-		}
-		
-		//wsprintf(ebuf, "MEM PUSH size %d sent %d left %d count %d split %d - sending %d @%p\r\n", size, sent, left, count, split, sending, minfo->addr);
-		//OutputDebugString(ebuf);
-		
-		if ((s = send(proxy_sock, ptr, hdr->len + sizeof(ZmqHdr), 0)) < pkt->len) {
-			// we need some global fatal variables..
-			return -1;
-		}
-		
-		if ((r = recv(proxy_sock, ptr, pkt_len, 0)) < sizeof(ZmqRet)) {
-			// we need some global fatal variables..
-			return -1;
-		}
-		
-		ZmqRet *retpkt = (ZmqRet *)ptr;
-		if (retpkt->response == 1) {
-			//OutputDebugString("MEM PUSH OK\r\n");
-			//__asm int 3
-			//ExitProcess(0);
-			sent += sending;
-			left -= sending;
-		}
-		else {
-			
-			wsprintf(ebuf, "MEM PUSH FAIL addr %p", start + sent);
-			__asm int 3
-				break;
-			
-			
-		}
-	}
-	
-	if (sent == size) {
-		ret = 1;
-	}
-	
-	return ret;
-}
-
-// copy all shadow memory to the remote side
-int PushRegion(ShadowRegion *shdw) {
-	int r = 0;
-	DWORD_PTR ret = 0;
-	int size = shdw->size;
-	int count = size;
-	int split = (1024 * 1024 * 8);
-	int left = size;
-	int sending = 0;
-	int sent = 0;
-	int s = 0;
-	char *ptr = NULL;
-	char *start = (char *)shdw->address;
-																			//split
-	int pkt_len = sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer) + split;
-	if ((ptr = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, pkt_len + 1)) == NULL) {
-		return -1;
-	}
-	ZmqHdr *hdr = (ZmqHdr *)(ptr);
-	ZmqPkt *pkt = (ZmqPkt *)((char *)ptr + sizeof(ZmqHdr));
-	MemTransfer *minfo = (MemTransfer *)((char *)ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt));
-	char ebuf[1024];
-
-	while (left > 0) {
-
-		sending = min(split, left);
-
-		hdr->len = sizeof(ZmqPkt) + sizeof(MemTransfer) + sending;
-		pkt->len = sizeof(ZmqPkt) + sizeof(MemTransfer) + sending;
-
-		hdr->type = MEM_PUSH;
-		pkt->cmd = MEM_PUSH;
-		minfo->cmd = MEM_PUSH;
-
-		
-		// memory information required to allocate remotely..
-		minfo->addr = (void *)((DWORD_PTR)start + sent);
-		minfo->len = sending;
-		char *dst = (char *)(ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer));
-		char *src = (char *)(start + sent);
-
-		//wsprintf(ebuf, "src %p dst %p size %d\r\n", src, dst, sending);
-		//OutputDebugString(ebuf);
-		//CopyMemory((void *)dst, (void *)src, sending-1);
-		for (int a = 0; a < sending; a++) {
-			dst[a] = src[a];
-		}
-
-		//wsprintf(ebuf, "MEM PUSH size %d sent %d left %d count %d split %d - sending %d @%p\r\n", size, sent, left, count, split, sending, minfo->addr);
-		//OutputDebugString(ebuf);
-
-		if ((s = send(proxy_sock, ptr, hdr->len + sizeof(ZmqHdr), 0)) < pkt->len) {
-			// we need some global fatal variables..
-			return -1;
-		}
-
-		if ((r = recv(proxy_sock, ptr, pkt_len, 0)) < sizeof(ZmqRet)) {
-			// we need some global fatal variables..
-			return -1;
-		}
-
-		ZmqRet *retpkt = (ZmqRet *)ptr;
-		if (retpkt->response == 1) {
-			//OutputDebugString("MEM PUSH OK\r\n");
-			//__asm int 3
-			//ExitProcess(0);
-			sent += sending;
-			left -= sending;
-		}
-		else {
-			
-			wsprintf(ebuf, "MEM PUSH FAIL addr %p", start + sent);
-			__asm int 3
-			break;
-
-			
-		}
-	}
-
-	if (sent == size) {
-		shdw->pushed = 1;
-		ret = 1;
-		shdw->LastSync = CRC_Region(shdw->address, shdw->size);
-	}
-
-	return ret;
-}
-
-// copy all shadow memory to the remote side
-int PullRegion(DWORD_PTR start, DWORD_PTR size) {
-	int r = 0;
-	DWORD_PTR ret = 0;
-	int count = size;
-	int split = (1024 * 1024 * 8);
-	int left = size;
-	int sending = 0;
-	int sent = 0;
-	int s = 0;
-	char *ptr = NULL;
-
-	int pkt_len = sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer) + split;
-
-	if ((ptr = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, pkt_len + 1)) == NULL) {
-		return -1;
-	}
-
-	ZmqHdr *hdr = (ZmqHdr *)(ptr);
-	ZmqPkt *pkt = (ZmqPkt *)((char *)ptr + sizeof(ZmqHdr));
-	MemTransfer *minfo = (MemTransfer *)((char *)ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt));
-	char ebuf[1024];
-
-	while (left > 0) {
-
-		sending = min(split, left);
-
-		hdr->len = sizeof(ZmqPkt) + sizeof(MemTransfer);
-		pkt->len = sizeof(ZmqPkt) + sizeof(MemTransfer);
-
-		hdr->type = MEM_PEEK;
-		pkt->cmd = MEM_PEEK;
-		minfo->cmd = MEM_PEEK;
-
-		
-		// memory information required to allocate remotely..
-		minfo->addr = (void *)((DWORD_PTR)start + sent);
-		minfo->len = sending;
-		//char *dst = (char *)(ptr + sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer));
-		//char *src = (char *)(start + sent);
-
-		//wsprintf(ebuf, "src %p dst %p size %d\r\n", src, dst, sending);
-		//OutputDebugString(ebuf);
-		//CopyMemory((void *)dst, (void *)src, sending-1);
-		//for (int a = 0; a < sending; a++) {dst[a] = src[a];}
-
-		//wsprintf(ebuf, "MEM PUSH size %d sent %d left %d count %d split %d - sending %d @%p\r\n", size, sent, left, count, split, sending, minfo->addr);
-		//OutputDebugString(ebuf);
-
-		if ((s = send(proxy_sock, ptr, hdr->len + sizeof(ZmqHdr), 0)) < pkt->len) {
-			// we need some global fatal variables..
-			return -1;
-		}
-
-		if ((r = recv(proxy_sock, ptr, pkt_len, 0)) < sizeof(ZmqRet)) {
-			// we need some global fatal variables..
-			return -1;
-		}
-
-		ZmqRet *retpkt = (ZmqRet *)ptr;
-		if (retpkt->response == 1) {
-
-			char *rdata = (char *)((char *)ptr + sizeof(ZmqRet));
-			CopyMemory((void *)((char *)start + sent), rdata, sending);
-
-			wsprintf(ebuf, "MEM PEEK addr %p size %d\r\n", start+sent, sending);
-			OutputDebugString(ebuf);
-			//__asm int 3
-			//ExitProcess(0);
-			sent += sending;
-			left -= sending;
-		}
-		else {
-			
-			wsprintf(ebuf, "MEM PEAK FAIL addr %p", start + sent);
-			__asm int 3
-			break;
-
-			
-		}
-	}
-
-	if (sent == size) ret = 1;
-
-	return ret;
-}
 
 
 
@@ -1517,6 +1182,7 @@ typedef struct _allocated_regions {
 
 AllocatedRegions *allocated_list = NULL;
 
+// free all allocated regions on the remote side...
 void FreeAllocatedRegions() {
 	int i = 0;
 	int pkt_len = sizeof(ZmqHdr) + sizeof(ZmqPkt) + sizeof(MemTransfer);
@@ -1637,19 +1303,15 @@ DWORD_PTR AllocateCopyRegion(int size) {
 		if (retpkt->response == 1) {
 			DWORD_PTR *checkaddr = (DWORD_PTR *)(ptr + sizeof(ZmqRet));
 			if (*checkaddr != (DWORD_PTR)allocaddr) {
-				OutputDebugString("ALLOCATE ADDRESS MISMATCH\r\n");
-				//__asm int 3
+				__asm int 3
 				//ExitProcess(0);
 			}
 			else {
-				//char ebuf[1024];
-				//wsprintf(ebuf, "MEM addr %p", allocaddr);
-				//MessageBox(0, ebuf, "hmm", 0);
-
 				done = 1;
 				ret = (DWORD_PTR)allocaddr;
 
 				AllocatedRegions *arptr = (AllocatedRegions *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(AllocatedRegions));
+
 				if (arptr != NULL) {
 					arptr->Address = (DWORD_PTR)allocaddr;
 					arptr->Size = newstack_size;
@@ -1661,6 +1323,7 @@ DWORD_PTR AllocateCopyRegion(int size) {
 			}
 		}
 		else {
+			// if we couldnt allocate exact space on remote side.. lets remove on local
 			VirtualFree(allocaddr, newstack_size, 0);
 		}
 		HeapFree(GetProcessHeap(), 0, ptr);
@@ -1686,11 +1349,14 @@ int ProxyConnect() {
 	}
 	//OutputDebugString("connected\r\n");
 
+	MainThread = Thread_New();
+
+
 	// allocate space for our functionality...
 	DWORD_PTR memrange = AllocateCopyRegion(REGION_SIZE);
 
 	if (memrange != 0) {
-		SetupMemory(memrange, REGION_SIZE);
+		SetupMemory(MainThread, memrange, REGION_SIZE);
 	}
 
 	return memrange != 0;
@@ -1786,8 +1452,9 @@ int RedirectImportTable(char *module_path) {
 }
 
 
+// add for when we're doing imports so its adds by section (will only add to main...)
 void WINAPI addregi(DWORD_PTR Address, DWORD_PTR Size) {
-	shadow_add(Address, Size, 0);
+	shadow_add(MainThread, Address, Size, 0);
 }
 
 
@@ -1797,6 +1464,7 @@ void WINAPI addregi(DWORD_PTR Address, DWORD_PTR Size) {
 int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
 	chksum_crc32gentab();
 	char ebuf[1024];
+	InitializeCriticalSection(&CS_redirect);
 	/*
 		HMODULE mod_emu;
 		mod_emu=LoadLibrary("x86emu.dll");
@@ -1807,6 +1475,8 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	*/
 	WSADATA wsaData;
 	char *dll = "e:\\msg2.dll";
+
+	tlsThreadID = TlsAlloc();
 
 	if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
 		ExitProcess(0);
@@ -1855,9 +1525,11 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	// now load the code into that base
 	Mblah = MemoryLoadLibrary(dllbuf,(void *)force_base,  (DWORD_PTR)&BuildImportTable2,0,(unsigned char **) &code, &func, &addregi);
 	
-	ShadowList = ShadowList->next;
+	// fix.. later we need to figure this out... and see why its using a section with probably 0 raw and virtual..
+	// prob just the last section thats not really being allocated
+	MainThread->ShadowList = MainThread->ShadowList->next;
 
-	TrickStackExec(code, func);
+	TrickStackExec(MainThread, code, func);
 
 	FreeAllocatedRegions();
 
