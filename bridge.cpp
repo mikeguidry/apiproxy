@@ -11,6 +11,7 @@
 #pragma comment(lib, "shlwapi.lib")
 
 
+/*
 
 Parameters *Parameters_by_Location(Parameters **param_list, int location) {
 	Parameters *pptr = *param_list;
@@ -74,7 +75,7 @@ Parameters *stack_push(Parameters **param_list, DWORD_PTR laddr) {
 
 		}
 	}
-*/
+* -- /
 	// LIFO = has to be because of the way we copy on to stack later
 
 	// if we detect this parameter is a string.. then we have to allocate it into the heap
@@ -82,13 +83,6 @@ Parameters *stack_push(Parameters **param_list, DWORD_PTR laddr) {
 	// this might show if someone is doing WriteFile ( char *, int size )
 	// or other...
 	
-/*
-// we need to use a custom lstrlenA that checks using IsBadReadPtr before every character verification!
-	if (lstrlenA((char *)laddr) > 4) {
-		paramnew->in_heap = 1;
-		paramnew->heap_data = StrDup((char *)laddr);
-	} 
-*/
 	
 	paramnew->parameter = laddr;
 
@@ -96,15 +90,11 @@ Parameters *stack_push(Parameters **param_list, DWORD_PTR laddr) {
 	paramnew->location = parameters_count;
 	*param_list = paramnew;
 
-	/*
-	// find last link, and add it.. needs to be in order..
-	while (pptr->next != NULL) { pptr = pptr->next; }
-	pptr->next = paramnew; */
 
 	return paramnew;
 }
 
-
+*/
 
 
 DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, DWORD_PTR proxyebp, DWORD_PTR *cleanup, DWORD_PTR Region, DWORD_PTR Region_Size, DWORD_PTR *RegionRet, DWORD_PTR *RegionRetSize, int *error) {
@@ -122,6 +112,8 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 	DWORD_PTR _cleanup = 0;
 	RegionCRC *RegionVerify=NULL;
 
+
+	//OutputDebugString("call helper\r\n");
 	//__asm int 3
 	if (func_addr == NULL)
 		return 0;
@@ -191,12 +183,12 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 		mov backup_ebp, ebp
 		//mov ebp, proxyebp
 
-		add esp, 12
+		add esp, 20
 
 		//int 3
 		call func_addr
 
-		sub esp, 12
+		sub esp, 20
 
 		mov ebp, backup_ebp
 		// if the function cleaned up the stack.. lets get it fixed so we can popa/popfd and return correctly...
@@ -232,7 +224,7 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 	*RegionRet = (DWORD_PTR)CRC_Verify(RegionVerify, RegionRetSize, 0);
 
 
-	RegionFree(RegionVerify);
+	RegionFree(&RegionVerify);
 
 #else
 	typedef void (*tCallHelper)();
@@ -433,8 +425,8 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 	// free virtual stack so things are ready for our next call..
 	//stack_free(&tinfo.param_list);
 
-	wsprintf(ebuf, "remote_ret RegionRet %p Region Ret Size %d\r\n", RegionRet, RegionRetSize);
-	OutputDebugString(ebuf);
+	//wsprintf(ebuf, "remote_ret RegionRet %p Region Ret Size %d\r\n", RegionRet, RegionRetSize);
+	//OutputDebugString(ebuf);
 
 	// generate a response stating we are successful
 	ret = gen_response(1, ret_size, (sizeof(DWORD_PTR) * 2) + RegionRetSize);

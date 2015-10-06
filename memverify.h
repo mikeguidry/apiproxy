@@ -8,4 +8,4 @@ typedef struct _region_crc {
 
 RegionCRC *CRC_Region(DWORD_PTR Addr, DWORD_PTR Size);
 char *CRC_Verify(RegionCRC *region, DWORD_PTR *Size, int);
-void RegionFree(RegionCRC *rptr);
+void RegionFree(RegionCRC **rptr);

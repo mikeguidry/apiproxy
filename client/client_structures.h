@@ -20,8 +20,10 @@ typedef struct _client_thread_info {
 	DWORD_PTR StackHigh;
 	void *memory_areas;
 	CRITICAL_SECTION CSmemory;
+	CRITICAL_SECTION CSshadow;
 	ShadowRegion *ShadowList;
 	ShadowRegion *ShadowMem;
+	CONTEXT ctx;
 
 } ClientThreadInfo;
 

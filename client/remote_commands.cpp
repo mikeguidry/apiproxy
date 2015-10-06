@@ -22,6 +22,8 @@ int PushData(DWORD_PTR start, DWORD_PTR size) {
 	int s = 0;
 	char *ptr = NULL;
 
+	if (size <= 0) return 0;
+
 	//OutputDebugString("pushing partial packet of data\r\n");
 
 	//split

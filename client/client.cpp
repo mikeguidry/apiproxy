@@ -294,8 +294,8 @@ Redirect *redirect_search(DWORD_PTR func) {
 
 
 	char ebuf[1024];
-	wsprintf(ebuf, "searhc %p\r\n", func);
-	OutputDebugString(ebuf);
+	//wsprintf(ebuf, "searhc %p\r\n", func);
+	//OutputDebugString(ebuf);
 	EnterCriticalSection(&CS_redirect);
 
 	Redirect *rptr = redirect_list;
@@ -417,7 +417,7 @@ int add_param(DWORD_PTR addr) {
 */
 
 
-int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
+int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR orig_esp, DWORD_PTR orig_ebp, DWORD_PTR *ret_fix) {
 	int ret = 0;
 	Redirect *rptr = NULL;
 	char *buf = NULL;
@@ -426,9 +426,22 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 	Parameters *pptr = NULL;
 	char ebuf[1024];
 	ShadowRegion *sptr = NULL;
-	CONTEXT ctx;
-	RtlCaptureContext(&ctx);
 	ClientThreadInfo *tinfo = TrickFindThread();
+	RtlCaptureContext(&tinfo->ctx);
+
+	DWORD_PTR *_orig_ebp = (DWORD_PTR *)orig_ebp;
+	DWORD_PTR orig_local_size = *_orig_ebp - orig_ebp;
+
+	if ((orig_ebp > tinfo->StackHigh) || (*_orig_ebp > tinfo->StackHigh) || (orig_local_size < 0))
+		orig_local_size = 0;
+
+
+	
+
+	wsprintf(ebuf, "func %p stack_ptr %p orig_ebp %p orig_esp %p ret_fix %p orig local size %d", func, stack_ptr, orig_ebp, orig_esp, ret_fix, orig_local_size);
+	OutputDebugString(ebuf);
+	// calculate space for caller local stack..
+	
 	
 	// we dont know if this space is zero.. so lets fix
 	*ret_fix = 0;
@@ -466,6 +479,8 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 	}
 #endif
 
+	PushData(orig_ebp, orig_local_size);
+
 	int func_len = lstrlen(rptr->function) + 1;
 	int mod_len = lstrlen(rptr->module) + 1;
 	int arg_size = 64;
@@ -486,8 +501,8 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 		cinfo->func_len = func_len;
 		cinfo->module_len = mod_len;
 		cinfo->arg_len = arg_size;
-		cinfo->ESP = ctx.Esp;
-		cinfo->EBP = ctx.Ebp;
+		cinfo->ESP = tinfo->ctx.Esp;
+		cinfo->EBP = tinfo->ctx.Ebp;
 		cinfo->Region = tinfo->ShadowMem->address;
 		cinfo->Region_Size = tinfo->ShadowMem->size;
 
@@ -601,6 +616,8 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 			}*/
 		}
 
+		PullRegion(orig_ebp, orig_local_size);
+
 #ifdef SYNC_ALWAYS
 		//if (MemoryModCount) {
 			for (sptr = tinfo->ShadowList; sptr != NULL; sptr = sptr->next) {
@@ -644,9 +661,19 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR *ret_fix) {
 
 __declspec(naked) void RedirectFunction_help(void) {
 	__asm {
+		// ecx has ebp
+		// edx has esp
+		// move the variables in place for pushing the information
+		// across to the other side so that we get the data back
+		// if local variables are modified
+
+		push edx
+		push ecx
+
+
 		// now move address of function (or its 'identitfier) into ebx
-		// its already in EBX.. mabye remove this later...
-		mov ebx, [esp + 4]
+		// its already in EBX.. maybe remove this later...
+		mov ebx, [esp + 12]
 
 		// normal opening..
 		push ebp
@@ -665,7 +692,7 @@ __declspec(naked) void RedirectFunction_help(void) {
 		// copy all of the stack (after the identifier/func address) to new stack space..
 		mov esi, ebp
 		// ebp = stack after push of ebp, so has.. ebp, ret, function identifier.. so +12 to get to the real arguments
-		add esi, 12
+		add esi, 20
 		//int 3
 		// we want to put that information at the current stack (with 64 bytes space)
 		// stack grows down so we give the start of it
@@ -680,13 +707,20 @@ __declspec(naked) void RedirectFunction_help(void) {
 		// buckle down and detect the bytes if we need optimizations
 		push edx
 
-		//int 3
-		// push stack space (64bytes)
-		mov edx, esp
+		// push origial ebp and esp.. so we can calculate the local stack of the prior function
+		// start at ebp now..
+		mov edx, ebp
+		// add past our push ebp
+		add edx, 4
+		push edx
+		// add past esp (so finally the original ebp)
 		add edx, 4
 		push edx
 
-		// stack space should already be awaiting from add_param from earlier...
+		// push stack space (64bytes)
+		mov edx, esp
+		add edx, 12
+		push edx
 
 		// push func addresss from earlier that we retrieved from the stack before our function initializer
 		push ebx
@@ -697,7 +731,8 @@ __declspec(naked) void RedirectFunction_help(void) {
 
 		//int 3
 		// fix our pushes (func, stack, and ret cleanup)
-		add esp, 16
+		// 16 now 24 for esp,ebp
+		add esp, 24
 
 		// put in ecx amount of bytes changed..
 		mov ebx, [ebp - 4]
@@ -709,7 +744,7 @@ __declspec(naked) void RedirectFunction_help(void) {
 		mov esp, ebp
 		pop ebp
 
-
+		add esp, 8
 
 		//mov esp, ebp
 		//add esp, 4
@@ -751,7 +786,7 @@ __declspec(naked) void RedirectFunction_help(void) {
 }*/
 
 
-unsigned char redirect_stub_raw[] = "\x90\x8B\x1C\x24\x83\xEC\x04\x89\x1C\x24\xBB\xDD\xCC\xBB\xAA\x89\x5C\x24\x04\x68\xAD\xDE\xEF\xBE\xC3";
+unsigned char redirect_stub_raw[] = "\x90\x8B\xCD\x8B\xD4\x8B\x1C\x24\x83\xEC\x04\x89\x1C\x24\xBB\xDD\xCC\xBB\xAA\x89\x5C\x24\x04\x68\xAD\xDE\xEF\xBE\xC3";
 
 /*
 void WINAPI PrintDebugRedir(void *func) {
@@ -785,9 +820,9 @@ char *RedirectStub_Build(DWORD_PTR Addr, DWORD_PTR Redirect_Addr) {
 
 	CopyMemory(ptr, redirect_stub_raw,stub_size);
 
-	Set = (DWORD_PTR *)(ptr + 11);
+	Set = (DWORD_PTR *)(ptr + 15);
 	*Set = Addr;
-	Set = (DWORD_PTR *)(ptr + 20);
+	Set = (DWORD_PTR *)(ptr + 24);
 	*Set = Redirect_Addr;
 
 
@@ -796,11 +831,16 @@ char *RedirectStub_Build(DWORD_PTR Addr, DWORD_PTR Redirect_Addr) {
 
 
 __declspec(naked) void redirect_stub() {
+	
 	__asm int 3
 	__asm nop
+	__asm mov ecx, ebp
+	__asm mov edx, esp
+
 	// add extra space we can insert a new argument to proxy the function call
 	__asm mov ebx, [esp]
 	__asm sub esp, 4
+
 	// push eax to stack so we can save it
 	//__asm push eax
 	// copy return address to eax
@@ -965,22 +1005,27 @@ struct _func_redirect {
 	// somehow automate the process to determine if its a string function, or something requiring of system
 	// maybe emulating functions and caching whether it goes on to using other DLLs.. if not then we can do locally
 	{"kernel32",	"heap", 0 },
-	{"user",		"wsprint", 0 },
-	{"kernel32",	"exitproc", 0 },
-	{"kernel32",	"exitthread", 0 },
-	{"kernel32",	"GetVersion", 0 },
-	{"kernel32",	"environmentstr", 0 },
-	{"kernel32",	"getcommand", 0 },
 	{"kernel32",	"multibyte", 0 },
+	{"kernel32",	"environmentstr", 0 },
+	{"kernel32",	"startupinfo", 0 },
+	{"kernel32",	"getcommand", 0 },
+	
 	{"kernel32",	"sethandle", 0 },
 	{"kernel32",	"getstdhandle", 0 },
-	{"kernel32",	"startupinfo", 0 },
+	
 	{"kernel32",	"getfiletype", 0 },
 	{"kernel32",	"getacp", 0 },
 	{"kernel32",	"getcpinfo", 0 },
 	{"kernel32",	"getstring", 0 },
 	{"kernel32",	"lcmapstring", 0 },
-	{"kernel32",	"getmodule", 0 },
+	{"kernel32",	"getmodule", 0 }, 
+	
+	{"kernel32",	"exitproc", 0 },
+	{"kernel32",	"exitthread", 0 },
+	{"kernel32",	"GetVersion", 0 },
+	{"user",		"wsprint", 0 },
+
+	
 	{ NULL, NULL, NULL }
 };
 

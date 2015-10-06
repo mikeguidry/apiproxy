@@ -104,7 +104,11 @@ char *CRC_Verify(RegionCRC *region, DWORD_PTR *Size, int to_push) {
 	return NULL;
 }
 
-void RegionFree(RegionCRC *rptr) {
-	HeapFree(GetProcessHeap(), 0, rptr->crc);
-	HeapFree(GetProcessHeap(), 0, rptr);
+void RegionFree(RegionCRC **rptr) {
+	if (*rptr != NULL) {
+		RegionCRC *_rptr = *rptr;
+		HeapFree(GetProcessHeap(), 0, _rptr->crc);
+		HeapFree(GetProcessHeap(), 0, _rptr);
+		*rptr = NULL;
+	}
 }
