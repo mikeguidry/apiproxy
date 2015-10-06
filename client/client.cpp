@@ -112,6 +112,14 @@ CONTEXT ctxBefore;
 DWORD_PTR backup_ebp = 0, backup_esp = 0;
 
 
+__declspec(naked) void break_stack_end() {
+	__asm {
+		int 3
+		int 3
+		int 3
+		int 3
+	}
+}
 
 // prepare stack with our custom shadow areas....
 // hack for now.. but we should start a new thread and setup the new thread to use the shadow... and let it exit quietly
@@ -125,10 +133,11 @@ int TrickStackExec(ClientThreadInfo *tinfo,void *code, void *func) {
 
 	// trick to do int3 if it messes up for now...
 	DWORD_PTR *_StackHigh = (DWORD_PTR *)tinfo->StackHigh;
-	*_StackHigh-- = 0xAAAAAAAA;
-	*_StackHigh-- = 0xBBBBBBBB;
-	*_StackHigh-- = 0xCCCCCCCC;
-	*_StackHigh-- = 0xDDDDDDDD;
+	DWORD_PTR StackEndBP = (DWORD_PTR)&break_stack_end;
+	*_StackHigh-- = StackEndBP;
+	*_StackHigh-- = StackEndBP;
+	*_StackHigh-- = StackEndBP;
+	*_StackHigh-- = StackEndBP;
 	//DWORD_PTR *A = (DWORD_PTR *)(StackHigh - sizeof(DWORD_PTR));
 	//*A-- = StackHigh; *A-- = StackHigh; *A-- = StackHigh; *A-- = StackHigh;
 
@@ -208,6 +217,13 @@ void SetupMemory(ClientThreadInfo *tinfo, DWORD_PTR RangeStart, DWORD_PTR Size) 
 	// lets give it 5 megabytes.. we should split this up later for multiple threads.. maybe separate heap/stack
 	tinfo->StackLow = tinfo->StackHigh - (1024 * 1024 * 5);
 
+	// lets spray stack with the BP just in case something leaks or fails ..we can see how/why (maybe)
+	DWORD_PTR StackEndBP = (DWORD_PTR)&break_stack_end;
+/*	DWORD_PTR *Set = (DWORD_PTR *)tinfo->StackHigh;
+	while ((DWORD_PTR)Set > (DWORD_PTR)tinfo->StackLow) {
+		*Set = StackEndBP;
+	}
+*/
 	// now for heap...
 	aptr->HeapMax = tinfo->StackLow - (1024 * 32);
 	aptr->HeapBase = RangeStart;
@@ -786,7 +802,7 @@ __declspec(naked) void RedirectFunction_help(void) {
 }*/
 
 
-unsigned char redirect_stub_raw[] = "\x90\x8B\xCD\x8B\xD4\x8B\x1C\x24\x83\xEC\x04\x89\x1C\x24\xBB\xDD\xCC\xBB\xAA\x89\x5C\x24\x04\x68\xAD\xDE\xEF\xBE\xC3";
+unsigned char redirect_stub_raw[] = "\xCC\x8B\xCD\x8B\xD4\x8B\x1C\x24\x83\xEC\x04\x89\x1C\x24\xBB\xDD\xCC\xBB\xAA\x89\x5C\x24\x04\x68\xAD\xDE\xEF\xBE\xC3";
 
 /*
 void WINAPI PrintDebugRedir(void *func) {
@@ -810,7 +826,7 @@ __declspec(naked) void printhelper() {
 // and puts the original function address as an argument to our function above so that we have all of the information required..
 // source is below
 // make 64bit version of stub & this later...
-char *RedirectStub_Build(DWORD_PTR Addr, DWORD_PTR Redirect_Addr) {
+char *RedirectStub_Build(DWORD_PTR Addr, DWORD_PTR Redirect_Addr, int debug) {
 	int stub_size = sizeof(redirect_stub_raw);
 	char *ptr = NULL;
 	DWORD_PTR *Set = NULL;
@@ -824,6 +840,10 @@ char *RedirectStub_Build(DWORD_PTR Addr, DWORD_PTR Redirect_Addr) {
 	*Set = Addr;
 	Set = (DWORD_PTR *)(ptr + 24);
 	*Set = Redirect_Addr;
+
+	if (debug == 1)
+		ptr[0] = 0xCC;
+	else ptr[0] = 0x90;
 
 
 	return ptr;
@@ -991,45 +1011,49 @@ LPVOID __stdcall myHeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes) {
   have a very close address.. therefore our space copying would affect it)
 */
 struct _func_redirect {
+	int debug;
 	char *module_name;
 	char *func_name;
 	void *func_addr;
+	
 } FuncRedirect[] = {
 	// functions that need to use custom heap..
-	{"kernel32",	"HeapAlloc", (void *)&myHeapAlloc },
-	{"kernel32",	"HeapFree", (void *)&myHeapFree },
-	{"kernel32",	"VirtualAlloc", (void *)&myHeapAlloc },
-	{"kernel32",	"VirtualFree", (void *)&myHeapFree },
-	{"kernel32",	"VirtualProtect", (void *)&myVirtualProtect },
+	{0,"kernel32",	"HeapAlloc", (void *)&myHeapAlloc },
+	{0,"kernel32",	"HeapFree", (void *)&myHeapFree },
+	{0,"kernel32",	"VirtualAlloc", (void *)&myHeapAlloc },
+	{0,"kernel32",	"VirtualFree", (void *)&myHeapFree },
+	{0,"kernel32",	"VirtualProtect", (void *)&myVirtualProtect },
+	//{0,"kernel32",	"GetVersion", (void *)1 },
+	{1,"kernel32",	"GetVersionEx", (void *)1 },
 	// customs we want locally for testing.. we should expand this to a wide variety...
 	// somehow automate the process to determine if its a string function, or something requiring of system
 	// maybe emulating functions and caching whether it goes on to using other DLLs.. if not then we can do locally
-	{"kernel32",	"heap", 0 },
-	{"kernel32",	"multibyte", 0 },
-	{"kernel32",	"environmentstr", 0 },
-	{"kernel32",	"startupinfo", 0 },
-	{"kernel32",	"getcommand", 0 },
+	{0,"kernel32",	"heap", 0 },
+	{0,"kernel32",	"multibyte", 0 },
+	{1,"kernel32",	"environmentstr", 0 },
+	{1,"kernel32",	"startupinfo", 0 },
+	{1,"kernel32",	"getcommand", 0 },
 	
-	{"kernel32",	"sethandle", 0 },
-	{"kernel32",	"getstdhandle", 0 },
+	{1,"kernel32",	"sethandle", 0 },
+	{1,"kernel32",	"getstdhandle", 0 },
 	
-	{"kernel32",	"getfiletype", 0 },
-	{"kernel32",	"getacp", 0 },
-	{"kernel32",	"getcpinfo", 0 },
-	{"kernel32",	"getstring", 0 },
-	{"kernel32",	"lcmapstring", 0 },
-	{"kernel32",	"getmodule", 0 }, 
+	{1,"kernel32",	"getfiletype", 0 },
+	{1,"kernel32",	"getacp", 0 },
+	{1,"kernel32",	"getcpinfo", 0 },
+	{1,"kernel32",	"getstring", 0 },
+	{1,"kernel32",	"lcmapstring", 0 },
+	{1,"kernel32",	"getmodule", 0 }, 
 	
-	{"kernel32",	"exitproc", 0 },
-	{"kernel32",	"exitthread", 0 },
-	{"kernel32",	"GetVersion", 0 },
-	{"user",		"wsprint", 0 },
+	//{"kernel32",	"exitproc", 0 },
+	//{"kernel32",	"exitthread", 0 },
+	
+	//{"user",		"wsprint", 0 },
 
 	
 	{ NULL, NULL, NULL }
 };
 
-FARPROC RedirGetAddr(char *module, char *function, int *found) {
+FARPROC RedirGetAddr(char *module, char *function, int *found, int *debug) {
 	char ebuf[1024];
 
 	// enum list
@@ -1041,13 +1065,15 @@ FARPROC RedirGetAddr(char *module, char *function, int *found) {
 				// if we found it.. we consider skip (meaning skip building a stub)
 				*found = 1;
 
+				if (FuncRedirect[i].debug==1) *debug = 1;
 				// if we have our own version.. use it
-				if (FuncRedirect[i].func_addr != 0) {
+				if ((FuncRedirect[i].func_addr != 0) && (FuncRedirect[i].func_addr != (void *)1)) {
 					wsprintf(ebuf, "Returning redirected (remote) %s [%s] -> %p\r\n", function, module, FuncRedirect[i].func_addr);
 					OutputDebugString(ebuf);
 
 					return (FARPROC)FuncRedirect[i].func_addr;
 				} else {
+					if (FuncRedirect[i].func_addr == (void *)1) *found = 0;
 					// return the normal
 					wsprintf(ebuf, "Returning original function (locally) %s\r\n", function);
 					OutputDebugString(ebuf);
@@ -1063,7 +1089,7 @@ FARPROC RedirGetAddr(char *module, char *function, int *found) {
 
 
 // we need to create a structure for the redirections since each one will allocate 64k bytes.. or just ignore it
-FARPROC RedirectStub(char *name, HMODULE handle, char *function) {
+FARPROC RedirectStub(char *name, HMODULE handle, char *function, int debug) {
 	FARPROC ret_addr = 0;
 	char ebuf[1024];
 /*
@@ -1074,7 +1100,7 @@ FARPROC RedirectStub(char *name, HMODULE handle, char *function) {
 	FARPROC func_addr = GetProcAddress(handle, function);
 
 	// copy stub to our newly allocated space using virtualprotect so its rw+exec
-	char *stub = RedirectStub_Build((DWORD_PTR)func_addr,(DWORD_PTR) &RedirectFunction_help);
+	char *stub = RedirectStub_Build((DWORD_PTR)func_addr,(DWORD_PTR) &RedirectFunction_help, debug);
 	CopyMemory(addr, stub, sizeof(redirect_stub_raw));
 
 	redirect_add((DWORD_PTR)func_addr, name, function);
@@ -1087,14 +1113,15 @@ FARPROC RedirectStub(char *name, HMODULE handle, char *function) {
 
 FARPROC RedirectProcAddress(char *name, HMODULE handle, char *function) {
 	int found = 0;
-	FARPROC	addr = RedirGetAddr(name, function, &found);
+	int debug = 0;
+	FARPROC	addr = RedirGetAddr(name, function, &found, &debug);
 	// skip == 1 (means we have an address.. but we want to return it since we want it on this side (not remote)
 	if (found == 1) {
 		return addr;
 	}
 
 
-	return RedirectStub(name, handle, function);
+	return RedirectStub(name, handle, function, debug);
 }
 
 //   Matt Pietrek's function
@@ -1283,6 +1310,16 @@ We can move all of our data and then ensure they are equal before/after calls...
 this should be rewrote later when we have a better API system
 
 */
+DWORD_PTR pref = 0x5A000000;
+
+DWORD_PTR PreferredAddress() {
+	DWORD_PTR ret = pref;
+	pref += 0x01000000;
+	if (pref > 0x70000000) return 0;
+	return ret;
+}
+
+
 DWORD_PTR AllocateCopyRegion(int size) {
 	int r = 0;
 	DWORD_PTR ret = 0;
@@ -1293,12 +1330,12 @@ DWORD_PTR AllocateCopyRegion(int size) {
 	// lets do a very basic heap allocator for now... we dont want it to resolve frees and move shit around till later
 
 	int done = 0;
-	while (!done && --count) {
+	while (!done && --count >= 0) {
 		int newstack_size = size * 4;
-		void *allocaddr = VirtualAlloc((void *)0, newstack_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		void *allocaddr = VirtualAlloc((void *)PreferredAddress(), newstack_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 		if (allocaddr == NULL) {
 			// if we cannot allocate the space using 0.. it means we are out of memory... no way to fix that
-			return -1;
+			continue;
 		}
 
 		// create a function for creating request to proxy and then send over the memory alloc
@@ -1332,8 +1369,8 @@ DWORD_PTR AllocateCopyRegion(int size) {
 
 
 		char fbuf[1024];
-		//wsprintf(fbuf, "trying to allocate %p size %d\r\n", allocaddr, newstack_size);
-		//OutputDebugString(fbuf);
+		wsprintf(fbuf, "trying to allocate %p size %d\r\n", allocaddr, newstack_size);
+		OutputDebugString(fbuf);
 		if ((r = send(proxy_sock, ptr, pkt_len, 0)) < pkt_len) {
 			// we need some global fatal variables..
 			return -1;
@@ -1512,7 +1549,7 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	InitializeCriticalSection(&CS_redirect);
 	/*
 		HMODULE mod_emu;
-		mod_emu=LoadLibrary("x86emu.dll");
+		mod_emu=LoadLibrary("x86emu");
 		void *func = (void *)GetProcAddress(mod_emu, "x86_emulate");
 		wsprintf(ebuf, "emu %p func %p", mod_emu, func);
 		MessageBox(0,ebuf,"hmm",0);

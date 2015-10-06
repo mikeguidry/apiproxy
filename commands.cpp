@@ -81,11 +81,13 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 		DWORD_PTR newptr = NULL;
 		if (meminfo->addr == NULL && !meminfo->_virtual)
 			newptr = (DWORD_PTR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, meminfo->len);
-		else
+		else {
 			newptr = (DWORD_PTR)VirtualAlloc(meminfo->addr, meminfo->len, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		}
 		
 		DWORD last = GetLastError();
 		if (newptr != NULL) {
+			ZeroMemory((void *)newptr, meminfo->len);
 			ret = gen_response(1,ret_size, sizeof(DWORD_PTR));
 			if (ret != NULL)
 				CopyMemory((char *)(ret + sizeof(ZmqRet)), &newptr, sizeof(DWORD_PTR));

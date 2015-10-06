@@ -503,9 +503,6 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
 	InitializeCriticalSection(&CS_Threads);
 
-	//thread_new();
-	
-
 
 	WSADATA wsaData;                 /* Structure for WinSock setup communication */
 
