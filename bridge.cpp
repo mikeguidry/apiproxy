@@ -183,12 +183,12 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 		mov backup_ebp, ebp
 		//mov ebp, proxyebp
 
-		add esp, 20
+		//add esp, 20
 
 		//int 3
 		call func_addr
 
-		sub esp, 20
+		//sub esp, 20
 
 		mov ebp, backup_ebp
 		// if the function cleaned up the stack.. lets get it fixed so we can popa/popfd and return correctly...
@@ -383,11 +383,14 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 	// this allows us to not have to create prototypes for every call
 	// we want to do
 	
-	if ((tinfo.param_data = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, cinfo->arg_len + 1)) == NULL) {
-		__asm int 3
-		ExitProcess(0);
+	if (cinfo->arg_len) {
+		if ((tinfo.param_data = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, cinfo->arg_len + 1)) == NULL) {
+			__asm int 3
+			ExitProcess(0);
+		}
+		CopyMemory(tinfo.param_data, ptr, cinfo->arg_len);
+		tinfo.param_data_size = cinfo->arg_len;
 	}
-	CopyMemory(tinfo.param_data, ptr, cinfo->arg_len);
 	ptr += cinfo->arg_len;
 
 	/*
@@ -420,7 +423,8 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 	}
 
 
-	HeapFree(GetProcessHeap(), 0, tinfo.param_data);
+	if (tinfo.param_data != NULL && cinfo->arg_len)
+		HeapFree(GetProcessHeap(), 0, tinfo.param_data);
 
 	// free virtual stack so things are ready for our next call..
 	//stack_free(&tinfo.param_list);

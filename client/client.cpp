@@ -448,8 +448,12 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR orig_esp, DWORD
 	DWORD_PTR *_orig_ebp = (DWORD_PTR *)orig_ebp;
 	DWORD_PTR orig_local_size = *_orig_ebp - orig_ebp;
 
-	if ((orig_ebp > tinfo->StackHigh) || (*_orig_ebp > tinfo->StackHigh) || (orig_local_size < 0))
+	
+	if ((orig_ebp > tinfo->StackHigh) || (*_orig_ebp > tinfo->StackHigh) || (orig_local_size < 0)) {
 		orig_local_size = 0;
+	}
+
+	//if (orig_local_size == 4676) orig_local_size = 1024;
 
 
 	
@@ -1023,7 +1027,7 @@ struct _func_redirect {
 	{0,"kernel32",	"VirtualAlloc", (void *)&myHeapAlloc },
 	{0,"kernel32",	"VirtualFree", (void *)&myHeapFree },
 	{0,"kernel32",	"VirtualProtect", (void *)&myVirtualProtect },
-	//{0,"kernel32",	"GetVersion", (void *)1 },
+	//{0,"kernel32",	"GetVersion", (void *)0 },
 	{1,"kernel32",	"GetVersionEx", (void *)1 },
 	// customs we want locally for testing.. we should expand this to a wide variety...
 	// somehow automate the process to determine if its a string function, or something requiring of system
