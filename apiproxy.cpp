@@ -1,5 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
-/*#pragma comment(linker, "/FILEALIGN:16")
+#pragma comment(linker, "/FILEALIGN:16")
 #pragma comment(linker, "/ALIGN:16")// Merge sections
 #pragma comment(linker, "/MERGE:.rdata=.data")
 #pragma comment(linker, "/MERGE:.text=.data")
@@ -7,7 +7,7 @@
 
 // Favour small code
 #pragma optimize("gsy", on)
-*/
+
 /* 
 
   PSYKOOSI - WIN32 API PROXY
@@ -135,6 +135,10 @@ or generate a DLL and hijack all IAT or a secondary list for the DLL to go to ze
 
   replacing IAT of heap allocation functions are a way to log all writes easily on the api proxy without a large amount of code so we can transfer the data backwards to the client
 
+
+  for backdoor version remove region verification.. do all push/pull on client and use emulation to check hot spots of memory to sync
+  encode/obf the call_helper
+
 */
 #include <windows.h>
 #include "structures.h"
@@ -201,9 +205,9 @@ struct _cmds {
 	void *func;
 	int cmd_id;
 } cmds[] = {
-	{ (void *)&file_cmd, FILE_READ },
-	{ (void *)&file_cmd, FILE_WRITE },
-	{ (void *)&file_cmd, FILE_DELETE },
+	//{ (void *)&file_cmd, FILE_READ },
+	//{ (void *)&file_cmd, FILE_WRITE },
+	//{ (void *)&file_cmd, FILE_DELETE },
 	{ (void *)&cmd_thread_new, THREAD_START },
 	{ (void *)&cmd_thread_kill, THREAD_END },
 	{ (void *)&cmd_mem_transfer, MEM_PUSH },
@@ -211,9 +215,10 @@ struct _cmds {
 	{ (void *)&cmd_mem_transfer, MEM_ALLOC },
 	{ (void *)&cmd_mem_transfer, MEM_DEALLOC },
 	{ (void *)&cmd_mem_transfer, MEM_ZERO },
-	{ (void *)&cmd_dll, LOAD_DLL },
-	{ (void *)&cmd_dll, UNLOAD_DLL },
+	//{ (void *)&cmd_dll, LOAD_DLL },
+	//{ (void *)&cmd_dll, UNLOAD_DLL },
 	{ (void *)&remote_call, CALL_FUNC },
+	{ (void *)&cmd_ping, PING },
 	{ (void *)&cmd_exit, PROC_EXIT },
 	{ NULL, 0 }
 };

@@ -41,6 +41,10 @@ char *cmd_thread_new(char *_ptr, int pkt_len, int *ret_size) {
 	return ret;
 }
 
+char *cmd_ping(char *_ptr, int pkt_len, int *ret_size) {
+	return gen_response(1, ret_size, 0);
+}
+
 
 char *cmd_thread_kill(char *_ptr, int pkt_len, int *ret_size) {
 	int *id = (int *)_ptr;
@@ -91,14 +95,7 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 			ret = gen_response(1,ret_size, sizeof(DWORD_PTR));
 			if (ret != NULL)
 				CopyMemory((char *)(ret + sizeof(ZmqRet)), &newptr, sizeof(DWORD_PTR));
-			//wsprintf(fbuf, "SUCCESS allocate %p [%d] Last %d\r\n", meminfo->addr, meminfo->len, last);
-			//OutputDebugString(fbuf);
-
 		} else {
-			
-			
-			//wsprintf(fbuf, "Couldnt allocate %p [%d] Last %d\r\n", meminfo->addr, meminfo->len, last);
-			//OutputDebugString(fbuf);
 			success = 0;
 			ret = gen_response(0, ret_size, 0);
 		}
@@ -116,8 +113,6 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 
 		ret = gen_response(1,ret_size, 0);
 	}
-
-	//if (success == 0)ret = gen_response(0,ret_size, 0);
 
 	return ret;
 }
