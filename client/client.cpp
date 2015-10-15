@@ -52,8 +52,6 @@ ClientThreadInfo *TrickFindThread() {
 }
 
 
-
-
 int FindFunctionParamSize(FARPROC FuncAddr);
 
 
@@ -517,6 +515,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR orig_esp, DWORD
 		zpkt->thread_id = 0;
 
 		CallInfo *cinfo = (CallInfo *)(buf + sizeof(ZmqHdr) + sizeof(ZmqPkt));
+
 		//cinfo->addr = 0;
 		cinfo->func_len = func_len;
 		cinfo->module_len = mod_len;
@@ -620,6 +619,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR orig_esp, DWORD
 
 			//DWORD_PTR lData_old = *lAddr;
 
+			// for now we only allow changes that are in our heap....
 			if (CustomHeapIsValidHeap(MainThread,(LPVOID)lAddr)) {
 
 				CopyMemory(lAddr, rData, REGION_BLOCK);
@@ -858,6 +858,7 @@ __declspec(naked) void redirect_stub() {
 	
 	__asm int 3
 	__asm nop
+	// rather than treating this function as a separate function from 'call_helper'.. lets use registers..
 	__asm mov ecx, ebp
 	__asm mov edx, esp
 
@@ -879,7 +880,7 @@ __declspec(naked) void redirect_stub() {
 	// restore eax
 	//__asm pop eax
 
-	// now push the function address or our proxy function..
+	// now push the function address of our proxy function..
 	__asm _emit 0x68
 	__asm _emit 0xAD
 	__asm _emit 0xDE
@@ -1028,7 +1029,7 @@ struct _func_redirect {
 	{0,"kernel32",	"VirtualFree", (void *)&myHeapFree },
 	{0,"kernel32",	"VirtualProtect", (void *)&myVirtualProtect },
 	//{0,"kernel32",	"GetVersion", (void *)0 },
-	{1,"kernel32",	"GetVersionEx", (void *)1 },
+	{0,"kernel32",	"GetVersionEx", (void *)0 },
 	// customs we want locally for testing.. we should expand this to a wide variety...
 	// somehow automate the process to determine if its a string function, or something requiring of system
 	// maybe emulating functions and caching whether it goes on to using other DLLs.. if not then we can do locally

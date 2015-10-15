@@ -1,16 +1,17 @@
 // 0mq packet of incoming...
+#pragma pack(push)
 #pragma pack(1)
 typedef struct _zero_pkt {
     int type;
     int len;
 } ZmqHdr;
-#pragma pack(pop)
+
 
 typedef struct _zmq_pkt {
 	unsigned int crc;
 	int thread_id; // 0 for global
-	unsigned char cmd;
-	unsigned short len; // len of cmd after pkt
+	int cmd;
+	int len; // len of cmd after pkt
 } ZmqPkt;
 
 // our response packet
@@ -24,10 +25,11 @@ typedef struct _zmq_ret {
 
 // transfer of memory
 typedef struct _mem_info {
-	int _virtual;
-	unsigned char cmd;  // MEM_PUSH, or MEM_PEEK
-	void *addr;			// address
 	int len;			// len of data after packet
+	int _virtual;
+	int cmd;  // MEM_PUSH, or MEM_PEEK
+	void *addr;			// address
+
 } MemTransfer;
 
 // header of each transferparam.. put the data immediately after
@@ -110,3 +112,5 @@ typedef struct _thread_info {
 	CRITICAL_SECTION CS;
 	CRITICAL_SECTION QCS;
 } ThreadInfo;
+
+#pragma pack(pop)

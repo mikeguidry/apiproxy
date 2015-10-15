@@ -41,7 +41,7 @@ char *cmd_thread_new(char *_ptr, int pkt_len, int *ret_size) {
 	return ret;
 }
 
-char *cmd_ping(char *_ptr, int pkt_len, int *ret_size) {
+char *cmd_ping(void *thread, char *_ptr, int pkt_len, int *ret_size) {
 	return gen_response(1, ret_size, 0);
 }
 
@@ -72,8 +72,8 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 	if (pkt_len < (sizeof(ZmqPkt) + sizeof(MemTransfer))) return NULL;
 
 	if (meminfo->cmd == MEM_PUSH) {
-		//wsprintf(fbuf, "MEM_PUSH %p len %d\r\n", meminfo->addr, meminfo->len);
-		//OutputDebugString(fbuf);
+		wsprintf(fbuf, "MEM_PUSH %p len %d\r\n", meminfo->addr, meminfo->len);
+		OutputDebugString(fbuf);
 		// we will need to supoprt exceptions for this later!
 		CopyMemory((void *)meminfo->addr, (char *)(_ptr + sizeof(ZmqPkt) +  sizeof(MemTransfer)), meminfo->len);
 		ret = gen_response(1, ret_size, 0);
@@ -100,11 +100,14 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 			ret = gen_response(0, ret_size, 0);
 		}
 	} else if (meminfo->cmd == MEM_DEALLOC) {
-		ZeroMemory(meminfo->addr, meminfo->len);
+		//ZeroMemory(meminfo->addr, meminfo->len);
+		try {
 		if (!meminfo->_virtual)
 			HeapFree(GetProcessHeap(), 0, meminfo->addr);
 		else
 			VirtualFree(meminfo->addr, 0, MEM_RELEASE);
+		} catch (DWORD err) {
+		}
 
 		ret = gen_response(1, ret_size, 0);
 		

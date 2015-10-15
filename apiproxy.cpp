@@ -8,6 +8,8 @@
 // Favour small code
 #pragma optimize("gsy", on)
 
+extern int psykoosi_proxy_VERSION;
+
 /* 
 
   PSYKOOSI - WIN32 API PROXY
@@ -205,6 +207,7 @@ struct _cmds {
 	void *func;
 	int cmd_id;
 } cmds[] = {
+	{ (void *)&cmd_ping, PING },
 	//{ (void *)&file_cmd, FILE_READ },
 	//{ (void *)&file_cmd, FILE_WRITE },
 	//{ (void *)&file_cmd, FILE_DELETE },
@@ -218,7 +221,7 @@ struct _cmds {
 	//{ (void *)&cmd_dll, LOAD_DLL },
 	//{ (void *)&cmd_dll, UNLOAD_DLL },
 	{ (void *)&remote_call, CALL_FUNC },
-	{ (void *)&cmd_ping, PING },
+	
 	{ (void *)&cmd_exit, PROC_EXIT },
 	{ NULL, 0 }
 };
@@ -399,8 +402,24 @@ int HandleTCPClient(int sock) {
 	char *buf = NULL;
 	int recvsize = 0;
 	ZmqHdr hdr;
+	/*
+	char _hdr[] = "APIPSY0";
+	unsigned short *_verify = (unsigned short *)&_hdr;
 
+	_hdr[6] = '0' + (char)psykoosi_proxy_VERSION;
 
+	if (send(sock,(char *) &_hdr, 7, 0) != 7) {
+		closesocket(sock);
+		ExitThread(0);
+	}
+
+	if ((recv(sock,(CHAR *)&_hdr, 2, 0) != 2) || (*_verify != 0xAFED)) {
+		closesocket(sock);
+		ExitThread(0);
+	}
+	
+*/
+	OutputDebugString("new client\r\n");
 	int done = 0;
 	while (!done) {
 		recvsize = recv(sock,(char *)&hdr,sizeof(ZmqHdr),0);
@@ -410,43 +429,34 @@ int HandleTCPClient(int sock) {
 
 		
 		if ((buf = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, hdr.len + 1)) == NULL) {
-			__asm int 3
-			ExitProcess(0);
+			break;
 		}
 
+
+		if (hdr.len > 0xFFFFFFF) {
+			// bad!
+			break;
+		} 
 		
 		int pktsize = 0;
 		while (pktsize < hdr.len) {
 			recvsize = recv(sock, buf + pktsize, hdr.len - pktsize, 0);
 			if (recvsize <= 0) {
-				return 0;
-				__asm int 3
-				ExitProcess(0);
+				break;
 			}
 
 			pktsize += recvsize;
-		}/*
-		// now we read the full packet length
-		recvsize = recv(sock, buf, hdr.len, 0);
-
-		if (recvsize < hdr.len) {
-			__asm int 3
-			ExitProcess(0);
-		}*/
+		}
 
 		int final_size = 0;
 		char *final = comm_process(buf, hdr.len, &final_size);
 
 		if (final == NULL) {
-			return 0;
-			__asm int 3
-			ExitProcess(0);
+			break;
 		}
 
 		if (send(sock, final, final_size, 0) != final_size) {
-			return 0;
-			__asm int 3
-			ExitProcess(0);
+			break;
 		}
 
 		HeapFree(GetProcessHeap(), 0, buf);
@@ -454,19 +464,24 @@ int HandleTCPClient(int sock) {
 
 	}
 	
-	return sock;
+	closesocket(sock);
+
+	ExitThread(0);
+	return 1;
 }
 
-int bindport() {
- int servSock;                    /* Socket descriptor for server */
+int ListenLoop() {
+	int servSock;                    /* Socket descriptor for server */
     int clntSock;                    /* Socket descriptor for client */
     struct sockaddr_in echoServAddr; /* Local address */
     struct sockaddr_in echoClntAddr; /* Client address */
     unsigned short echoServPort=5555;     /* Server port */
-     int clntLen;            /* Length of client address data structure */
+	int clntLen;            /* Length of client address data structure */
+	
  /* Create socket for incoming connections */
-    if ((servSock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
-__asm int 3
+	 if ((servSock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+		 return -1;
+	 }
 
     /* Construct local address structure */
     memset(&echoServAddr, 0, sizeof(echoServAddr));   /* Zero out structure */
@@ -475,28 +490,34 @@ __asm int 3
     echoServAddr.sin_port = htons(echoServPort);      /* Local port */
 
     /* Bind to the local address */
-    if (bind(servSock, (struct sockaddr *) &echoServAddr, sizeof(echoServAddr)) < 0)
-		__asm int 3
+    if (bind(servSock, (struct sockaddr *) &echoServAddr, sizeof(echoServAddr)) < 0) {
+		return -1;
+	}
 
     /* Mark the socket so it will listen for incoming connections */
-    if (listen(servSock, 5) < 0)
-        __asm int 3
+    if (listen(servSock, 5) < 0) {
+		return -1;
+	}
 
-		 for (;;) /* Run forever */
+	for (;;) /* Run forever */
     {
         /* Set the size of the in-out parameter */
         clntLen = sizeof(echoClntAddr);
 
         /* Wait for a client to connect */
-        if ((clntSock = accept(servSock, (struct sockaddr *) &echoClntAddr, &clntLen)) < 0)
-			__asm int 3
+        if ((clntSock = accept(servSock, (struct sockaddr *) &echoClntAddr, &clntLen)) < 0) {
+			return -1;
+		}
        
 
         /* clntSock is connected to a client! */
 
        // printf("Handling client %s\n", inet_ntoa(echoClntAddr.sin_addr));
 
-        HandleTCPClient(clntSock);
+		HANDLE hThread;
+		if ((hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) HandleTCPClient, (void *)clntSock, 0, 0)) == NULL)
+			return -1;
+        
     }
 
 	return 0;
@@ -509,14 +530,14 @@ int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	InitializeCriticalSection(&CS_Threads);
 
 
-	WSADATA wsaData;                 /* Structure for WinSock setup communication */
+	WSADATA wsaData;
 
 	if (WSAStartup(MAKEWORD(2, 0), &wsaData) != 0) {
 		ExitProcess(0);
     }
 
-	bindport();
-	ExitProcess(0);
+	if (ListenLoop() == -1)
+		ExitProcess(0);
 
 	return 0;
 }

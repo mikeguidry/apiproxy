@@ -73,10 +73,11 @@ char *CRC_Verify(RegionCRC *region, DWORD_PTR *Size, int to_push) {
 					// copy the data a dword at a time starting with the address to be returned to the caller...
 					DWORD_PTR *mAddr = (DWORD_PTR *)mptr;
 					mptr += sizeof(DWORD_PTR);
-					DWORD_PTR *mData = (DWORD_PTR *)mptr;
+					unsigned char *mData = (unsigned char *)mptr;
 					mptr += REGION_BLOCK;
 					
 					// copy this block of data
+
 					*mAddr = (DWORD_PTR)ptr;
 					CopyMemory(mData, ptr, REGION_BLOCK);
 					//*mData = *(DWORD_PTR *)(ptr);				

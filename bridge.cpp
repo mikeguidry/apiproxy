@@ -148,7 +148,8 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 		CopyMemory(ptr, &pptr->parameter, sizeof(DWORD_PTR));
 		ptr += sizeof(DWORD_PTR);
 	}*/
-	CopyMemory(ptr, tinfo->param_data, tinfo->param_data_size);
+	if (tinfo->param_data != NULL && tinfo->param_data_size)
+		CopyMemory(ptr, tinfo->param_data, tinfo->param_data_size);
 
 
 	RegionVerify = CRC_Region(Region, Region_Size);
@@ -185,7 +186,7 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 
 		//add esp, 20
 
-		//int 3
+//		int 3
 		call func_addr
 
 		//sub esp, 20
@@ -327,7 +328,7 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 	char *module_name = NULL;
 	char *func_name = NULL;
 	CallInfo *cinfo = (CallInfo *)(_ptr + sizeof(ZmqPkt));
-	char *ptr = (char *)_ptr;
+	char *ptr = (char *)((char *)_ptr + sizeof(ZmqPkt) + sizeof(CallInfo));
 	int error = 0;
 	DWORD_PTR callret = NULL;
 	int args = 0;
@@ -339,7 +340,7 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 
 	ZeroMemory(&tinfo, sizeof(ThreadInfo));
 
-	ptr += sizeof(ZmqPkt);
+	//ptr += sizeof(ZmqPkt);
 
 	// make sure packet size has call info
 	if (pkt_len < sizeof(CallInfo))
@@ -351,14 +352,16 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 		return gen_response(0,ret_size,0);
 */	
 	// inc ptr past the call info structure
-	ptr += sizeof(CallInfo);
+	//ptr += sizeof(CallInfo);
+
+	//ptr += 4;
 
 	// if we dont have an address to call.. then we must dynamically load the API from a DLL
 	if (cinfo->addr == NULL) {
 		if ((module_name = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, cinfo->module_len + 2)) == NULL)
 			return gen_response(0,ret_size,0);
 
-		CopyMemory(module_name, ptr, cinfo->module_len);
+			CopyMemory(module_name, ptr, cinfo->module_len);
 
 	}
 	ptr += cinfo->module_len;
