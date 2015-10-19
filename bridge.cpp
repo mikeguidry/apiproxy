@@ -127,6 +127,7 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 	parameters_size = sizeof(DWORD_PTR) * parameters_count;
 	*/
 
+	//proxyesp -= 64;
 	proxyesp -= parameters_size;
 	
 	ptr = (unsigned char *)(proxyesp);// - parameters_size);
@@ -413,7 +414,7 @@ char *remote_call(ThreadInfo *t, char *_ptr, int pkt_len, int *ret_size) {
 	*/
 
 
-	wsprintf(ebuf, "remote_call module %s func_name %s\r\n", module_name, func_name);
+	wsprintf(ebuf, "remote_call module %s func_name %s reg %X size %d\r\n", module_name, func_name, cinfo->Region, cinfo->Region_Size);
 	OutputDebugString(ebuf);
 
 	DWORD_PTR ret_fix = 0;

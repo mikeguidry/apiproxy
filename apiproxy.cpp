@@ -420,47 +420,53 @@ int HandleTCPClient(int sock) {
 	
 */
 	OutputDebugString("new client\r\n");
-	int done = 0;
-	while (!done) {
-		recvsize = recv(sock,(char *)&hdr,sizeof(ZmqHdr),0);
-		if (recvsize < sizeof(ZmqHdr)) {
-			break;
-		}
 
-		
-		if ((buf = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, hdr.len + 1)) == NULL) {
-			break;
-		}
-
-
-		if (hdr.len > 0xFFFFFFF) {
-			// bad!
-			break;
-		} 
-		
-		int pktsize = 0;
-		while (pktsize < hdr.len) {
-			recvsize = recv(sock, buf + pktsize, hdr.len - pktsize, 0);
-			if (recvsize <= 0) {
+	try {
+		int done = 0;
+		while (!done) {
+			recvsize = recv(sock,(char *)&hdr,sizeof(ZmqHdr),0);
+			if (recvsize < sizeof(ZmqHdr)) {
 				break;
 			}
 
-			pktsize += recvsize;
+			
+			if ((buf = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, hdr.len + 1)) == NULL) {
+				break;
+			}
+
+
+			if (hdr.len > 0xFFFFFFF) {
+				// bad!
+				break;
+			} 
+			
+			int pktsize = 0;
+			while (pktsize < hdr.len) {
+				recvsize = recv(sock, buf + pktsize, hdr.len - pktsize, 0);
+				if (recvsize <= 0) {
+					break;
+				}
+
+				pktsize += recvsize;
+			}
+
+			int final_size = 0;
+			char *final = comm_process(buf, hdr.len, &final_size);
+
+			if (final == NULL) {
+				break;
+			}
+
+			if (send(sock, final, final_size, 0) != final_size) {
+				break;
+			}
+
+			HeapFree(GetProcessHeap(), 0, buf);
+			HeapFree(GetProcessHeap(), 0, final);
+
 		}
-
-		int final_size = 0;
-		char *final = comm_process(buf, hdr.len, &final_size);
-
-		if (final == NULL) {
-			break;
-		}
-
-		if (send(sock, final, final_size, 0) != final_size) {
-			break;
-		}
-
-		HeapFree(GetProcessHeap(), 0, buf);
-		HeapFree(GetProcessHeap(), 0, final);
+	} catch (DWORD err) {
+		OutputDebugString("ERROR handling tcp client\n");
 
 	}
 	
@@ -478,10 +484,13 @@ int ListenLoop() {
     unsigned short echoServPort=5555;     /* Server port */
 	int clntLen;            /* Length of client address data structure */
 	
- /* Create socket for incoming connections */
+
 	 if ((servSock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 		 return -1;
 	 }
+
+	 int on = 1;
+	 setsockopt(servSock, SOL_SOCKET,SO_REUSEADDR,(const char *) &on, sizeof(on));
 
     /* Construct local address structure */
     memset(&echoServAddr, 0, sizeof(echoServAddr));   /* Zero out structure */

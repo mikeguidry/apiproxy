@@ -60,6 +60,17 @@ char *cmd_thread_kill(char *_ptr, int pkt_len, int *ret_size) {
 }
 
 
+// Microsoft C
+void *getTIB() {
+    void *pTIB;
+    __asm {
+        mov EAX, FS:[0x18]
+			mov pTIB, EAX
+    }
+    return pTIB;
+}
+
+
 // this should start at MemTransfer (not ZmqPkt)
 char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 	char *ptr = NULL;
@@ -75,12 +86,22 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 		wsprintf(fbuf, "MEM_PUSH %p len %d\r\n", meminfo->addr, meminfo->len);
 		OutputDebugString(fbuf);
 		// we will need to supoprt exceptions for this later!
-		CopyMemory((void *)meminfo->addr, (char *)(_ptr + sizeof(ZmqPkt) +  sizeof(MemTransfer)), meminfo->len);
+		if (meminfo->_virtual) {
+			char *tib = (char *)getTIB();
+			CopyMemory((void *)((char *)tib + (int)meminfo->addr),(char *)(_ptr + sizeof(ZmqPkt) +  sizeof(MemTransfer)), meminfo->len);
+		} else
+			CopyMemory((void *)meminfo->addr, (char *)(_ptr + sizeof(ZmqPkt) +  sizeof(MemTransfer)), meminfo->len);
 		ret = gen_response(1, ret_size, 0);
 	} else if (meminfo->cmd == MEM_PEEK) {
 			ret = gen_response(1,ret_size, meminfo->len);
-			if (ret != NULL)
-				CopyMemory((char *)(ret + sizeof(ZmqRet)), meminfo->addr, meminfo->len);
+			if (ret != NULL) {
+				// virtual means we wanna copy from TIB
+				if (meminfo->_virtual) {
+					char *tib = (char *)getTIB();
+					CopyMemory((char *)(ret + sizeof(ZmqRet)), (void *)((char *)tib + (int)meminfo->addr), meminfo->len);
+				} else
+					CopyMemory((char *)(ret + sizeof(ZmqRet)), meminfo->addr, meminfo->len);
+			}
 	} else if (meminfo->cmd == MEM_ALLOC) {
 		DWORD_PTR newptr = NULL;
 		if (meminfo->addr == NULL && !meminfo->_virtual)
@@ -107,6 +128,7 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 		else
 			VirtualFree(meminfo->addr, 0, MEM_RELEASE);
 		} catch (DWORD err) {
+			OutputDebugString("ERROR\n");
 		}
 
 		ret = gen_response(1, ret_size, 0);

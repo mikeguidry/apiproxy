@@ -485,7 +485,7 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR orig_esp, DWORD
 			PushRegion(sptr);
 		} else {
 			// if we already pushed once.. we should only push the difference since our last call
-			CRC_Verify(sptr->LastSync, NULL, 1);
+				(sptr->LastSync, NULL, 1);
 		}
 	}
 #else
@@ -620,9 +620,10 @@ int remote_handle(DWORD_PTR func,DWORD_PTR *stack_ptr, DWORD_PTR orig_esp, DWORD
 			//DWORD_PTR lData_old = *lAddr;
 
 			// for now we only allow changes that are in our heap....
-			if (CustomHeapIsValidHeap(MainThread,(LPVOID)lAddr)) {
+			//if (CustomHeapIsValidHeap(MainThread,(LPVOID)lAddr)) {
+			*lAddr = *rData;
 
-				CopyMemory(lAddr, rData, REGION_BLOCK);
+				//CopyMemory(lAddr, rData, REGION_BLOCK);
 				//if ((*rAddr < ctx.Esp) && ((*rAddr < (DWORD_PTR)remoteret) && (*rAddr > ((DWORD_PTR)((char *)remoteret+max_ret_size))))) {
 				//*lAddr = *rData;
 		

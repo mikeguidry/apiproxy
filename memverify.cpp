@@ -9,8 +9,8 @@ RegionCRC *CRC_Region(DWORD_PTR Addr, DWORD_PTR Size) {
 	int crc_count = Size / REGION_BLOCK;
 	
 	char ebuf[1024];
-	//wsprintf(ebuf, "Region Verify crc Addr %d Size %d count %d\r\n", Addr, Size, crc_count);
-	//OutputDebugString(ebuf);
+	wsprintf(ebuf, "Region Verify crc Addr %X Size %d count %d\r\n", Addr, Size, crc_count);
+	OutputDebugString(ebuf);
 	
 	cptr = (RegionCRC *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RegionCRC));
 	if (cptr == NULL) {
@@ -53,8 +53,8 @@ char *CRC_Verify(RegionCRC *region, DWORD_PTR *Size, int to_push) {
 	}
 	
 	
-	//wsprintf(ebuf, "Region check crc Addr %d Size %d count %d modified = %d\r\n", region->Addr, region->Size, crc_count, modified);
-	//OutputDebugString(ebuf);
+	wsprintf(ebuf, "Region check crc Addr %X Size %d count %d modified = %d\r\n", region->Addr, region->Size, crc_count, modified);
+	OutputDebugString(ebuf);
 	
 	
 	if (modified > 0) {
@@ -73,14 +73,13 @@ char *CRC_Verify(RegionCRC *region, DWORD_PTR *Size, int to_push) {
 					// copy the data a dword at a time starting with the address to be returned to the caller...
 					DWORD_PTR *mAddr = (DWORD_PTR *)mptr;
 					mptr += sizeof(DWORD_PTR);
-					unsigned char *mData = (unsigned char *)mptr;
+					DWORD_PTR *mData = (DWORD_PTR *)mptr;
 					mptr += REGION_BLOCK;
 					
 					// copy this block of data
-
 					*mAddr = (DWORD_PTR)ptr;
-					CopyMemory(mData, ptr, REGION_BLOCK);
-					//*mData = *(DWORD_PTR *)(ptr);				
+					//CopyMemory(mData, ptr, REGION_BLOCK);
+					*mData = *(DWORD_PTR *)(ptr);				
 				} else {
 #ifdef APICLIENT
 					PushData((DWORD_PTR)ptr, REGION_BLOCK);

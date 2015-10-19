@@ -4,7 +4,7 @@ typedef struct _region_crc {
 	DWORD_PTR Size;
 } RegionCRC;
 
-#define REGION_BLOCK 128
+#define REGION_BLOCK sizeof(DWORD_PTR)
 
 RegionCRC *CRC_Region(DWORD_PTR Addr, DWORD_PTR Size);
 char *CRC_Verify(RegionCRC *region, DWORD_PTR *Size, int);
