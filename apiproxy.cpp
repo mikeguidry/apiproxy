@@ -208,9 +208,9 @@ struct _cmds {
 	int cmd_id;
 } cmds[] = {
 	{ (void *)&cmd_ping, PING },
-	//{ (void *)&file_cmd, FILE_READ },
-	//{ (void *)&file_cmd, FILE_WRITE },
-	//{ (void *)&file_cmd, FILE_DELETE },
+	{ (void *)&file_cmd, FILE_READ },
+	{ (void *)&file_cmd, FILE_WRITE },
+	{ (void *)&file_cmd, FILE_DELETE },
 	{ (void *)&cmd_thread_new, THREAD_START },
 	{ (void *)&cmd_thread_kill, THREAD_END },
 	{ (void *)&cmd_mem_transfer, MEM_PUSH },

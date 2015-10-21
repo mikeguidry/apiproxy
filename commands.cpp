@@ -189,51 +189,54 @@ char *file_cmd(char *_ptr, int pkt_len, int *ret_size) {
 		return gen_response(0,ret_size,0);
 
 	ptr += sizeof(FileInfo);
-
+	
 	if (finfo->name_len) {
 		if ((name = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, finfo->name_len + 2)) == NULL)
 			return gen_response(0,ret_size,0);
-
+		
 		CopyMemory(name, ptr, finfo->name_len);
 		ptr += finfo->name_len;
-	} else {
-		return gen_response(0,ret_size,0);
-	}
+	} 
 
 	if (finfo->data_len) {
 		if ((data = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, finfo->data_len + 1)) == NULL)
 			return gen_response(0, ret_size, 0);
-
+		
 		CopyMemory(data, ptr, finfo->data_len);
 		ptr += finfo->data_len;
 	}
 	
 
-	/*if (finfo->cmd == FILE_READ) {
+	if (finfo->cmd == FILE_READ) {
 		unsigned long size = 0;
 		char *rdata = NULL;
 		rdata = FileGetContents(name, &size);
-
+		
 		if (rdata == NULL && !size) {
 			ret = gen_response(0,ret_size, 0);
 		} else {
 			ret = gen_response(1,ret_size, size);
-
+			
 			if (ret != NULL)
 				CopyMemory((char *)(ret + sizeof(ZmqRet)),rdata,size);
+
+			HeapFree(GetProcessHeap(), 0, rdata);
 		}
 	} else if (finfo->cmd == FILE_WRITE) {
 		if (finfo->overwrite)
 			DeleteFile(name);
-
+		
 		if (FilePutContents(name, data, data_len, 0) == 1)
 			ret = gen_response(1,ret_size,0);
-	} else*/
-	if (finfo->cmd == FILE_DELETE) {
+
+	} else if (finfo->cmd == FILE_DELETE) {
 		DeleteFile(name);
 		ret = gen_response(1,ret_size,0);
+
 	}
 
+	if (name != NULL) HeapFree(GetProcessHeap(), 0, name);
+	if (data != NULL) HeapFree(GetProcessHeap(), 0, data);
 	return ret;
 
 }
