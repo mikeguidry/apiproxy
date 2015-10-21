@@ -153,6 +153,20 @@ char *cmd_dll(char *ptr, int pkt_len, int *ret_size) {
 			CopyMemory((char *)(ret + sizeof(ZmqRet)), &loadret, sizeof(DWORD_PTR));
 	} else if (ptr[1] == UNLOAD_DLL) {	
 		ret = gen_response(1,ret_size, 0);
+	} else if (ptr[1] == GET_DLL_HANDLE) {
+		DWORD_PTR addr = (DWORD_PTR)GetModuleHandle(name);
+		if (addr != NULL) {
+			ret = gen_response(1,ret_size, sizeof(DWORD_PTR));
+			if (ret != NULL)
+				CopyMemory((char *)(ret + sizeof(ZmqRet)), &addr, sizeof(DWORD_PTR));
+		} else {
+			ret = gen_response(0, ret_size, 0);
+		}
+	} else if (ptr[1] == GET_MODULE_FILENAME) {
+		char buf[MAX_PATH];
+		int nlen = GetModuleFileName(GetModuleHandle(name), buf, MAX_PATH);
+		ret = gen_response(1, ret_size, nlen + 1);
+		CopyMemory((char *)(ret + sizeof(ZmqRet)), buf, nlen);
 	}
 
 	return ret;

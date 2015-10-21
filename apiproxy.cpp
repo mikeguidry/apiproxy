@@ -218,11 +218,12 @@ struct _cmds {
 	{ (void *)&cmd_mem_transfer, MEM_ALLOC },
 	{ (void *)&cmd_mem_transfer, MEM_DEALLOC },
 	{ (void *)&cmd_mem_transfer, MEM_ZERO },
-	//{ (void *)&cmd_dll, LOAD_DLL },
-	//{ (void *)&cmd_dll, UNLOAD_DLL },
+	{ (void *)&cmd_dll, LOAD_DLL },
+	{ (void *)&cmd_dll, UNLOAD_DLL },
 	{ (void *)&remote_call, CALL_FUNC },
 	
 	{ (void *)&cmd_exit, PROC_EXIT },
+	{ (void *)&cmd_dll, GET_DLL_HANDLE },
 	{ NULL, 0 }
 };
 

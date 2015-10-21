@@ -49,6 +49,8 @@ enum {
 
 	//LASTERROR_MODE, // mode to determine if we need to report backwards GetLastError every call so the client can have it ready
 	PING,
+	GET_DLL_HANDLE,
+	GET_MODULE_FILENAME,
 	CMD_DONE		// just placeholder for the end
 	
 };
