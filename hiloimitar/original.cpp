@@ -338,7 +338,6 @@ void RegionFree(RegionCRC **rptr) {
 typedef struct _zero_pkt {
     int type;
     int len;
-	DWORD_PTR ThreadID;
 } ZmqHdr;
 
 
@@ -387,6 +386,7 @@ typedef struct call_info {
 	DWORD_PTR Region_Size;
 	// how many TransferParams come next..
 	int arg_len;
+	DWORD_PTR ThreadID;
 } CallInfo;
 
 // information given when needing to read/write files
@@ -1248,6 +1248,7 @@ int HandleTCPClient(int sock) {
 				break;
 			}
 
+			OutputDebugString("got packet\r\n");
 			
 			if ((buf = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, hdr.len + 1)) == NULL) {
 				break;
@@ -1272,8 +1273,14 @@ int HandleTCPClient(int sock) {
 			int final_size = 0;
 			char *final = NULL;
 
-			ThreadData *dptr = ThreadFind(hdr.ThreadID);
+			
+			if (hdr.type == CALL_FUNC) {
+
+			CallInfo *cinfo = (CallInfo *)(buf + sizeof(ZmqPkt));
+			ThreadData *dptr = ThreadFind(cinfo->ThreadID);
 			if (dptr != NULL) {
+				OutputDebugString("thread found .. adding into queue\r\n");
+				
 				if (!InterlockedExchangeAdd(&dptr->inqueue, 0) && !InterlockedExchangeAdd(&dptr->outqueue, 0)) {
 					EnterCriticalSection(&dptr->CS);
 					dptr->input_buf = buf;
@@ -1298,6 +1305,11 @@ int HandleTCPClient(int sock) {
 				final_size = dptr->output_size;
 				InterlockedExchange(&dptr->outqueue, 0);
 				LeaveCriticalSection(&dptr->CS);
+
+			} else {
+				OutputDebugString("no thread found \r\n");
+				final =(char *) comm_process(buf, hdr.len, &final_size);
+			}
 
 			} else {
 				final =(char *) comm_process(buf, hdr.len, &final_size);
