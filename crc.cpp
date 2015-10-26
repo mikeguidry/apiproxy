@@ -72,10 +72,3 @@ void chksum_crc32gentab ()
 }
 
 
-#ifdef TEST
-int main(int argc, char *argv[]) {
-	char *buf = "This is a test buffer.";
-	chksum_crc32gentab ();
-	printf("Crc32 %X\n", chksum_crc32(buf, strlen(buf)));
-}
-#endif

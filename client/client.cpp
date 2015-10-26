@@ -39,6 +39,10 @@ to test the system we will load a module into memory using a DLL and then proxy 
 
 #pragma comment(lib, "shlwapi.lib")
 
+
+
+HANDLE hProcess = NULL;
+
 DWORD tlsThreadID = 0;
 
 
@@ -1549,7 +1553,23 @@ void WINAPI addregi(DWORD_PTR Address, DWORD_PTR Size) {
 
 
 
-int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+//int __stdcall WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+int main(int argc, char *argv[]) {
+	if (argc != 2) {
+		printf("usage: %s <process id>\n", argv[0]);
+		exit(-1);
+	}
+
+	// which process to attach the debugger to?
+	pid = atoi(argv[1]);
+
+	if ((hProcess = OpenProcess(PROCESS_ALL_ACCESS, 0, pid)) == NULL) {
+		printf("Couldnt open process %d\n", pid);
+		exit(-1);
+	}
+
+	printf("Opened process %d - HANDLE %X\n", pid, hProcess);
+
 	chksum_crc32gentab();
 	char ebuf[1024];
 	InitializeCriticalSection(&CS_redirect);

@@ -1,0 +1,2 @@
+apiproxy should have a debugger to connect to a remote process, or a branch to a different version that can synchronize the emulator
+with a real execution of the application... differently from logemu because it should offer real time abilities..

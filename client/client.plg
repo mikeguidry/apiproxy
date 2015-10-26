@@ -6,27 +6,13 @@
 --------------------Configuration: client - Win32 Debug--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96A.tmp" with contents
 [
 /nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_MBCS" /D "APICLIENT" /D "SYNC_ALWAYS" /Fp"Debug/client.pch" /YX /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
-"E:\apiproxy\client\udis86\decode.c"
-"E:\apiproxy\client\udis86\input.c"
-"E:\apiproxy\client\udis86\itab.c"
-"E:\apiproxy\client\udis86\syn-att.c"
-"E:\apiproxy\client\udis86\syn-intel.c"
-"E:\apiproxy\client\udis86\syn.c"
-"E:\apiproxy\client\udis86\udis86.c"
 "E:\apiproxy\client\client.cpp"
-"E:\apiproxy\crc.cpp"
-"E:\apiproxy\client\customheap.cpp"
-"E:\apiproxy\file.cpp"
-"E:\apiproxy\client\hooking.cpp"
-"E:\apiproxy\client\memorymodule.cpp"
-"E:\apiproxy\memverify.cpp"
-"E:\apiproxy\client\remote_commands.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP2.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP3.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96A.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96B.tmp" with contents
 [
 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib /nologo /base:"0x21000000" /entry:"WinMain" /subsystem:windows /incremental:yes /pdb:"Debug/client.pdb" /debug /machine:I386 /out:"Debug/client.exe" /pdbtype:sept 
 .\Debug\decode.obj
@@ -45,54 +31,33 @@ kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32
 .\Debug\memverify.obj
 .\Debug\remote_commands.obj
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP3.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96B.tmp"
 <h3>Output Window</h3>
 Compiling...
-decode.c
-e:\apiproxy\client\udis86\decode.c(734) : warning C4133: 'function' : incompatible types - from 'unsigned __int8 *' to 'int *'
-e:\apiproxy\client\udis86\decode.c(893) : warning C4244: '=' : conversion from 'unsigned __int32 ' to 'unsigned __int8 ', possible loss of data
-e:\apiproxy\client\udis86\decode.c(898) : warning C4244: '=' : conversion from 'unsigned __int32 ' to 'unsigned __int8 ', possible loss of data
-e:\apiproxy\client\udis86\decode.c(930) : warning C4244: '=' : conversion from 'unsigned __int32 ' to 'unsigned __int8 ', possible loss of data
-input.c
-e:\apiproxy\client\udis86\decode.c(483) : warning C4761: integral size mismatch in argument; conversion supplied
-itab.c
-syn-att.c
-syn-intel.c
-syn.c
-udis86.c
 client.cpp
-e:\apiproxy\client\x86_emulate.h(92) : warning C4161: #pragma pack(pop...) : more pops than pushes
-e:\apiproxy\client\client.cpp(162) : warning C4405: 'ret' : identifier is reserved word
-e:\apiproxy\client\client.cpp(310) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(574) : warning C4018: '<' : signed/unsigned mismatch
-e:\apiproxy\client\client.cpp(608) : warning C4018: '<' : signed/unsigned mismatch
-e:\apiproxy\client\client.cpp(848) : warning C4305: '=' : truncation from 'const int' to 'char'
-e:\apiproxy\client\client.cpp(848) : warning C4309: '=' : truncation of constant value
-e:\apiproxy\client\client.cpp(849) : warning C4305: '=' : truncation from 'const int' to 'char'
-e:\apiproxy\client\client.cpp(849) : warning C4309: '=' : truncation of constant value
-e:\apiproxy\client\client.cpp(1097) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(1179) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\client\client.cpp(1551) : warning C4101: 'ebuf' : unreferenced local variable
-crc.cpp
-customheap.cpp
-file.cpp
-hooking.cpp
-memorymodule.cpp
-e:\apiproxy\client\memorymodule.cpp(292) : warning C4101: 'locationDelta' : unreferenced local variable
-e:\apiproxy\client\memorymodule.cpp(291) : warning C4101: 'headers' : unreferenced local variable
-e:\apiproxy\client\memorymodule.cpp(291) : warning C4101: 'code' : unreferenced local variable
-memverify.cpp
-e:\apiproxy\memverify.cpp(11) : warning C4101: 'ebuf' : unreferenced local variable
-e:\apiproxy\memverify.cpp(47) : warning C4101: 'ebuf' : unreferenced local variable
-remote_commands.cpp
-e:\apiproxy\client\remote_commands.cpp(95) : warning C4018: '==' : signed/unsigned mismatch
-e:\apiproxy\client\remote_commands.cpp(272) : warning C4018: '==' : signed/unsigned mismatch
-Linking...
+E:\apiproxy\client\client.cpp(166) : warning C4405: 'ret' : identifier is reserved word
+E:\apiproxy\client\client.cpp(314) : warning C4101: 'ebuf' : unreferenced local variable
+E:\apiproxy\client\client.cpp(578) : warning C4018: '<' : signed/unsigned mismatch
+E:\apiproxy\client\client.cpp(612) : warning C4018: '<' : signed/unsigned mismatch
+E:\apiproxy\client\client.cpp(680) : error C2143: syntax error : missing ';' before 'return'
+E:\apiproxy\client\client.cpp(681) : error C2143: syntax error : missing ';' before '}'
+E:\apiproxy\client\client.cpp(681) : error C2143: syntax error : missing ';' before '}'
+E:\apiproxy\client\client.cpp(681) : error C2143: syntax error : missing ';' before '}'
+E:\apiproxy\client\client.cpp(687) : error C2143: syntax error : missing ';' before '{'
+E:\apiproxy\client\client.cpp(687) : error C2447: missing function header (old-style formal list?)
+E:\apiproxy\client\client.cpp(854) : warning C4305: '=' : truncation from 'const int' to 'char'
+E:\apiproxy\client\client.cpp(854) : warning C4309: '=' : truncation of constant value
+E:\apiproxy\client\client.cpp(855) : warning C4305: '=' : truncation from 'const int' to 'char'
+E:\apiproxy\client\client.cpp(855) : warning C4309: '=' : truncation of constant value
+E:\apiproxy\client\client.cpp(1113) : error C2065: 'RedirectFunction_help' : undeclared identifier
+E:\apiproxy\client\client.cpp(1559) : error C2065: 'printf' : undeclared identifier
+E:\apiproxy\client\client.cpp(1564) : error C2065: 'pid' : undeclared identifier
+Error executing cl.exe.
 
 
 
 <h3>Results</h3>
-client.exe - 0 error(s), 24 warning(s)
+client.exe - 9 error(s), 8 warning(s)
 </pre>
 </body>
 </html>

@@ -6,38 +6,40 @@
 --------------------Configuration: apiproxy - Win32 Debug--------------------
 </h3>
 <h3>Command Lines</h3>
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP122.tmp" with contents
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96C.tmp" with contents
 [
 /nologo /MTd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_MBCS" /D "APISERVER" /FR"Debug/" /Fp"Debug/apiproxy.pch" /YX /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
-"E:\apiproxy\file.cpp"
+"E:\apiproxy\commands.cpp"
 ]
-Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP122.tmp" 
-Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP123.tmp" with contents
+Creating command line "cl.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96C.tmp" 
+Creating temporary file "C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96D.tmp" with contents
 [
 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib /nologo /base:"0x21000000" /subsystem:windows /incremental:yes /pdb:"Debug/apiproxy.pdb" /debug /machine:I386 /out:"Debug/apiproxy.exe" /pdbtype:sept 
 .\Debug\apiproxy.obj
 .\Debug\bridge.obj
 .\Debug\commands.obj
 .\Debug\crc.obj
+.\Debug\file.obj
 .\Debug\memverify.obj
 .\Debug\threads.obj
-.\Debug\file.obj
 ]
-Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP123.tmp"
+Creating command line "link.exe @C:\DOCUME~1\ADMINI~1\LOCALS~1\Temp\RSP96D.tmp"
 <h3>Output Window</h3>
 Compiling...
-file.cpp
+commands.cpp
+E:\apiproxy\commands.cpp(101) : warning C4101: 'err' : unreferenced local variable
+E:\apiproxy\commands.cpp(140) : warning C4101: 'err' : unreferenced local variable
 Linking...
 LINK : warning LNK4078: multiple ".data" sections found with different attributes (40000040)
 LINK : warning LNK4078: multiple ".data" sections found with different attributes (60000020)
-Creating command line "bscmake.exe /nologo /o"Debug/apiproxy.bsc"  .\Debug\apiproxy.sbr .\Debug\bridge.sbr .\Debug\commands.sbr .\Debug\crc.sbr .\Debug\memverify.sbr .\Debug\threads.sbr .\Debug\file.sbr"
+Creating command line "bscmake.exe /nologo /o"Debug/apiproxy.bsc"  .\Debug\apiproxy.sbr .\Debug\bridge.sbr .\Debug\commands.sbr .\Debug\crc.sbr .\Debug\file.sbr .\Debug\memverify.sbr .\Debug\threads.sbr"
 Creating browse info file...
 <h3>Output Window</h3>
 
 
 
 <h3>Results</h3>
-apiproxy.exe - 0 error(s), 2 warning(s)
+apiproxy.exe - 0 error(s), 4 warning(s)
 </pre>
 </body>
 </html>

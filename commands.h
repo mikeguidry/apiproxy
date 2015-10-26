@@ -4,7 +4,7 @@ char *cmd_thread_kill(char *_ptr, int pkt_len, int *ret_size);
 char *cmd_ping(void *,char *_ptr, int pkt_len, int *ret_size);
 char *cmd_thread_new(char *_ptr, int pkt_len, int *ret_size);
 char *gen_response(int response, int *size, int additional);
-char *file_cmd(char *_ptr, int pkt_len, int *ret_size);
+char *file_cmd(void *, char *_ptr, int pkt_len, int *ret_size);
 char *cmd_exit(char *_ptr, int pkt_len, int *ret_size);
 char *gen_response(int response, int *size, int additional);
 

@@ -5,6 +5,7 @@
 #include "structures.h"
 #include "file.h"
 #include "threads.h"
+#include <stdio.h>
 
 // generate a response packet
 char *gen_response(int response, int *size, int additional) {
@@ -86,11 +87,20 @@ char *cmd_mem_transfer(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
 		wsprintf(fbuf, "MEM_PUSH %p len %d\r\n", meminfo->addr, meminfo->len);
 		OutputDebugString(fbuf);
 		// we will need to supoprt exceptions for this later!
+		DWORD old_prot = 0;
+		
 		if (meminfo->_virtual) {
+			
 			char *tib = (char *)getTIB();
 			CopyMemory((void *)((char *)tib + (int)meminfo->addr),(char *)(_ptr + sizeof(ZmqPkt) +  sizeof(MemTransfer)), meminfo->len);
-		} else
+		} else {
+			try {
+			VirtualProtect(meminfo->addr, meminfo->len, PAGE_EXECUTE_READWRITE, &old_prot);
 			CopyMemory((void *)meminfo->addr, (char *)(_ptr + sizeof(ZmqPkt) +  sizeof(MemTransfer)), meminfo->len);
+			VirtualProtect(meminfo->addr, meminfo->len,old_prot, &old_prot);
+			} catch (DWORD err) {
+			}
+		}
 		ret = gen_response(1, ret_size, 0);
 	} else if (meminfo->cmd == MEM_PEEK) {
 			ret = gen_response(1,ret_size, meminfo->len);
@@ -173,22 +183,30 @@ char *cmd_dll(char *ptr, int pkt_len, int *ret_size) {
 }
 
 
-char *file_cmd(char *_ptr, int pkt_len, int *ret_size) {
-	char *ptr = (char *)_ptr;
+char *file_cmd(void *tinfo, char *_ptr, int pkt_len, int *ret_size) {
+	char *ptr = (char *)(_ptr + sizeof(ZmqPkt));
 	char *ret = NULL;
 	char *filename = NULL;
 	char *data = NULL;
 	int data_len = 0;
 	char *name = NULL;
-	FileInfo *finfo = (FileInfo *)ptr;
-
-	if (pkt_len < sizeof(FileInfo))
-		return gen_response(0,ret_size,0);
-
-	if (pkt_len < (int)(sizeof(FileInfo) + finfo->data_len + finfo->name_len))
-		return gen_response(0,ret_size,0);
+	FileInfo *finfo = (FileInfo *)(ptr);
+	
+	printf("file cmd\n");
 
 	ptr += sizeof(FileInfo);
+
+	if (pkt_len < sizeof(FileInfo)) {
+		printf("ret from file cmd\n");
+		return gen_response(0,ret_size,0);
+	}
+
+	
+	//if (pkt_len < (int)(sizeof(FileInfo) + finfo->data_len + finfo->name_len))
+	//	return gen_response(0,ret_size,0);
+
+	//ptr += sizeof(ZmqPkt);
+	//ptr += sizeof(FileInfo);
 	
 	if (finfo->name_len) {
 		if ((name = (char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, finfo->name_len + 2)) == NULL)
@@ -237,6 +255,8 @@ char *file_cmd(char *_ptr, int pkt_len, int *ret_size) {
 
 	if (name != NULL) HeapFree(GetProcessHeap(), 0, name);
 	if (data != NULL) HeapFree(GetProcessHeap(), 0, data);
+
+	printf("ret from file cmd\n");
 	return ret;
 
 }

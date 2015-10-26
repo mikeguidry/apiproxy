@@ -56,7 +56,7 @@ typedef struct call_info {
 
 // information given when needing to read/write files
 typedef struct _file_info {
-	unsigned char cmd;
+	int cmd;
 	int name_len;
 	int data_len;
 	int overwrite;
