@@ -7,39 +7,25 @@ function properly without writing new functions for all of the win32 API
 
 */
 #include <windows.h>
+#include <Winternl.h>
 #include "tlhelp32.h"
+#include <stdio.h>
 #include "../crc.h"
+#include "gerente.h"
 
-CRITICAL_SECTION CS_ThreadData;
+// some procs we have to declare..
 char *comm_process(char *pkt, int size, int *ret_size) ;
-
-typedef struct _thread_data {
-	struct _thread_data *next;
-
-	CRITICAL_SECTION CS;
-
-	long inqueue;
-	long outqueue;
-
-	HANDLE hThread;
-	DWORD_PTR ThreadID;
-
-	char *input_buf;
-	int input_size;
-	char *output_buf;
-	int output_size;
-
-	long count;
-
-} ThreadData;
-
-
-ThreadData *thread_data_list = NULL;
-
 int ListenLoop();
 
+// global variables
+CRITICAL_SECTION CS_ThreadData;
+DWORD_PTR tlsDataIndex = 0;
+ThreadData *thread_data_list = NULL;
 
-int ThreadInsert(DWORD_PTR ID, HANDLE hThread) {
+
+
+// adds a thread into linked list
+ThreadData *ThreadInsert(DWORD_PTR ID, HANDLE hThread) {
 	ThreadData *dptr = (ThreadData *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ThreadData));
 	if (dptr != NULL) {
 		InitializeCriticalSection(&dptr->CS);
@@ -53,22 +39,35 @@ int ThreadInsert(DWORD_PTR ID, HANDLE hThread) {
 		LeaveCriticalSection(&CS_ThreadData);
 	}
 
-	return -1;
+	return dptr;
 }
 
+
+
+// finds a thread in the linked list
 ThreadData *ThreadFind(DWORD_PTR ID) {
-	EnterCriticalSection(&CS_ThreadData);
-	ThreadData *dptr = thread_data_list, *ret = NULL;
+	ThreadData *dptr = NULL;
 
-	while (dptr != NULL) {
-		if (dptr->ThreadID == ID) {
-			ret = dptr;
-			break;
+	// first check if it exists in TLS...
+	DWORD_PTR tlsData = (DWORD_PTR)TlsGetValue(tlsDataIndex);
+	if (GetLastError() == NO_ERROR)
+		dptr = (ThreadData *)tlsData;
+
+	// if it wasnt in TLS... lets loop and find it..
+	if (dptr == NULL) {
+		EnterCriticalSection(&CS_ThreadData);
+		 thread_data_list, *ret = NULL;
+
+		while (dptr != NULL) {
+			if (dptr->ThreadID == ID) {
+				ret = dptr;
+				break;
+			}
+			dptr = dptr->next;
 		}
-		dptr = dptr->next;
-	}
 
-	LeaveCriticalSection(&CS_ThreadData);
+		LeaveCriticalSection(&CS_ThreadData);
+	}
 
 	return ret;
 }
@@ -79,11 +78,14 @@ ThreadData *ThreadFind(DWORD_PTR ID) {
 
 /*
 thread queue needs to handle proxied API calls and then return the information & loop
+
+  *** FIX.. Move this to Mutex so theres no sleeping/waiting (for speed)...
+	  or completed multithread/multiplex / change to zeromq/nanomsg
 */
 int ThreadLoop(void *param) {
 	HANDLE hThread = GetCurrentThread();
 
-	ThreadInsert(GetCurrentThreadId(), GetCurrentThread());
+	
 	ThreadData *dptr = ThreadFind(GetCurrentThreadId());
 
 	if (!dptr) {
@@ -103,8 +105,6 @@ int ThreadLoop(void *param) {
 
 		dptr->output_buf = comm_process(dptr->input_buf, dptr->input_size, &dptr->output_size);
 		
-
-
 		InterlockedExchange(&dptr->inqueue, 0);
 		InterlockedIncrement(&dptr->outqueue);
 		LeaveCriticalSection(&dptr->CS);
@@ -115,31 +115,98 @@ int ThreadLoop(void *param) {
 	return 0;
 }
 
+// Sets a threads TLS Value
+int SetThreadTlsValue(HANDLE hThread, CONTEXT *ctx, DWORD_PTR Index, DWORD_PTR Value) {
+	LDT_ENTRY ldtSel;
+
+	if (!GetThreadSelectorEntry(hThread, ctx->SegFs, &ldtSel)) {
+		return 0;
+	}
+
+	// this isn't FS BASE.. its TIB base!
+	DWORD_PTR TIB = (ldtSel.HighWord.Bits.BaseHi << 24 ) | ( ldtSel.HighWord.Bits.BaseMid << 16 ) | ( ldtSel.BaseLow );
+
+	// find TEB from TIB...
+	DWORD_PTR TEBAddr = (DWORD_PTR)*(DWORD_PTR *)((DWORD_PTR)TIB + (DWORD_PTR)0x18);
+	
+	// now we have to get the TLS value...
+	// implement checking if its in expansion slot later..
+	PTEB teb = (PTEB)TEBAddr;
+
+	// Set Value in TLS Slot Index on hThread
+	teb->TlsSlots[Index] = (void *)Value;
 
 
+	return 1;
+}
+
+void PushStack(DWORD_PTR **_ESP, DWORD_PTR Value) {
+	DWORD *ESP = *_ESP;
+	ESP -= sizeof(DWORD_PTR);
+	*ESP = Value;
+	*_ESP = ESP;
+}
 
 int RedirectAndProxyThread(HANDLE hThread) {
 	HMODULE kern = LoadLibrary("kernel32");
 	DWORD_PTR _exitaddr = (DWORD_PTR)GetProcAddress(kern, "ExitThread");
+	DWORD_PTR ThreadID = GetThreadId(hThread);
 
 	CONTEXT ctx;
 	ctx.ContextFlags = CONTEXT_FULL;
 	GetThreadContext(hThread, &ctx);
 
-
-	ctx.Esp -= 4;
-	DWORD_PTR *_param = (DWORD_PTR *)(ctx.Esp);
-	// we arent using param right now so set to 0
-	*_param = 0;
-
-	// put address of exitthread as return address... (if the func ever returns.. it shouldnt)
-	ctx.Esp -= 4;
-	DWORD_PTR *_retaddr = (DWORD_PTR *)(ctx.Esp);
-	*_retaddr = _exitaddr;
 	
+	// create a thread data structure for keeping information regarding this thread...
+	ThreadData *dptr = ThreadInsert(ThreadID, hThread);
+
+	// set that information inside of the other threads TLS...
+	// (i dont know why we are doing this since we already did a linked list. but we can remove the linked list now
+	// and use TLS and itll be quicker without the EnterCriticalSection,etc... but not sure if speed matters for this,
+	// however for converting normal apps to HPC.. it will)
+	SetThreadTlsValue(hThread, &ctx, tlsDataIndex, (DWORD_PTR)dptr);
+
+
+	// keep original thread information for later..
+	CopyMemory(&dptr->OriginalCtx, &ctx, sizeof(CONTEXT));
+
+	// now we must create a new location for our 'new' stack for this thread
+	// this 'new' stack will have exitthread as the parent... and itll call our loop
+	// otherwise its blank and frabricated...
+	// we wont bother the old stack since we may need it to unload, and want the memory
+	// as close as posible to the original when the emulator proceeds to continue using
+	// the snapshot
+	DWORD_PTR StackSize = 1024*1024;
+	DWORD_PTR StackLow = (DWORD_PTR)VirtualAlloc(0, StackSize, MEM_RESERVE|MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	if (StackLow == NULL) {
+		printf("Couldnt allocate memory for a new stack!");
+		exit(-1);
+	}
+
+	// calculate high of the stack (really the 'low' or initial starting point)
+	DWORD_PTR StackHigh = (StackLow + StackSize);
+
+	// get that stack area ready for use in ESP
+	DWORD_PTR *ESP = (DWORD_PTR *)StackHigh;
+
+	// put exitthread at top (even though it should never reach.. its proper)
+	PushStack(&ESP, _exitaddr);
+	
+	// put the parameter (its not used yet, but the structure information for the thread)
+	PushStack(&ESP, (DWORD_PTR)dptr);
+
+	// now put the return address
+	PushStack(&ESP, _exitaddr);
+
 	// make EIP the start of our threadloop function...
 	ctx.Eip = (DWORD_PTR)&ThreadLoop;
 
+	// replace the original stack with our new stack region..
+	// this means we wont corrupt the original stack in any way whatsoever...
+	// we are setting EBP because we dont really have a frame setup.. its irrelevant
+	ctx.Esp = ctx.Ebp = (DWORD_PTR)ESP;
+
+	// push the changes to the thread...
 	SetThreadContext(hThread, &ctx);
 
 	return 1;
@@ -213,6 +280,7 @@ int EnumerateTreadsAndHijack() {
 				if (te32.th32ThreadID != CurrentThreadID) {
 					HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, te32.th32ThreadID);
 
+
 					// we were able to open the thread all access.. now hijack and redirect so we can proxy
 					// using the original function calls for the functions being fuzzed...
 					// they should be saved & simulated for distribution & future fuzzing
@@ -257,15 +325,21 @@ int Thread_InitProxy(void *param) {
 		ExitProcess(0);
     }
 	
-	
+	// get a TLS index where we will have saved information for each hijacked (emulation proxy) thread
+	tlsDataIndex = TlsAlloc();
 
 
+	// pause all threads
 	PauseThreads(0, 0);
+
+	// hijack the threads
 	EnumerateTreadsAndHijack();
 	
+	// resume the threads *** FIX (figure out why we have to do this twice)
 	PauseThreads(0, 1);
 	PauseThreads(0, 1);
 
+	// listen on TCP/IP port for proxied Win32 API and direct to the particular thread necessary
 	if (ListenLoop() == -1)
 		ExitProcess(0);
 
