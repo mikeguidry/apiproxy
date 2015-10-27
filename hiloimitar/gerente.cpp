@@ -46,7 +46,7 @@ ThreadData *ThreadInsert(DWORD_PTR ID, HANDLE hThread) {
 
 // finds a thread in the linked list
 ThreadData *ThreadFind(DWORD_PTR ID) {
-	ThreadData *dptr = NULL;
+	ThreadData *dptr = NULL, *ret = NULL;
 
 	// first check if it exists in TLS...
 	DWORD_PTR tlsData = (DWORD_PTR)TlsGetValue(tlsDataIndex);
@@ -55,8 +55,8 @@ ThreadData *ThreadFind(DWORD_PTR ID) {
 
 	// if it wasnt in TLS... lets loop and find it..
 	if (dptr == NULL) {
+		dptr = thread_data_list;
 		EnterCriticalSection(&CS_ThreadData);
-		 thread_data_list, *ret = NULL;
 
 		while (dptr != NULL) {
 			if (dptr->ThreadID == ID) {
@@ -147,10 +147,10 @@ void PushStack(DWORD_PTR **_ESP, DWORD_PTR Value) {
 	*_ESP = ESP;
 }
 
-int RedirectAndProxyThread(HANDLE hThread) {
+int RedirectAndProxyThread(HANDLE hThread, DWORD_PTR ThreadID) {
 	HMODULE kern = LoadLibrary("kernel32");
 	DWORD_PTR _exitaddr = (DWORD_PTR)GetProcAddress(kern, "ExitThread");
-	DWORD_PTR ThreadID = GetThreadId(hThread);
+	//DWORD_PTR ThreadID = GetThreadId(hThread);
 
 	CONTEXT ctx;
 	ctx.ContextFlags = CONTEXT_FULL;
@@ -285,7 +285,7 @@ int EnumerateTreadsAndHijack() {
 					// using the original function calls for the functions being fuzzed...
 					// they should be saved & simulated for distribution & future fuzzing
 
-					RedirectAndProxyThread(hThread);
+					RedirectAndProxyThread(hThread, te32.th32ThreadID);
 					
 					CloseHandle(hThread);
 				}
