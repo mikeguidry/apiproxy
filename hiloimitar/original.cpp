@@ -748,9 +748,9 @@ DWORD_PTR call_helper(ThreadInfo *tinfo, FARPROC func_addr, DWORD_PTR proxyesp, 
 
 		//add esp, 20
 
-		int 3
+		//int 3
 		call func_addr
-		int 3
+		//int 3
 
 		//sub esp, 20
 
