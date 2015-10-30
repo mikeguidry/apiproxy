@@ -52,6 +52,7 @@ typedef struct call_info {
 	DWORD_PTR Region_Size;
 	// how many TransferParams come next..
 	int arg_len;
+	DWORD_PTR ThreadID;
 } CallInfo;
 
 // information given when needing to read/write files
