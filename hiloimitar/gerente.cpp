@@ -10,8 +10,14 @@ function properly without writing new functions for all of the win32 API
 #include <Winternl.h>
 #include "tlhelp32.h"
 #include <stdio.h>
-#include "../crc.h"
 #include "gerente.h"
+#include "../client/client_structures.h"
+#include "../client/customheap.h"
+#include "../crc.h"
+#include "../structures.h"
+
+
+#define OUR_SIZE 1024*1024*100
 
 // some procs we have to declare..
 char *comm_process(char *pkt, int size, int *ret_size) ;
@@ -21,6 +27,109 @@ int ListenLoop();
 CRITICAL_SECTION CS_ThreadData;
 DWORD_PTR tlsDataIndex = 0;
 ThreadData *thread_data_list = NULL;
+ClientThreadInfo *cinfo = NULL;
+
+typedef struct _our_regions {
+	struct _our_regions *next;
+	DWORD_PTR Address;
+	DWORD_PTR Size;
+} OurRegions;
+
+OurRegions *ourregions = NULL;
+
+// lets allocate 100 megabytes at a time
+DWORD_PTR OurNew() {
+	DWORD_PTR Address = (DWORD_PTR)VirtualAlloc(0, OUR_SIZE, MEM_COMMIT|MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	if (!Address) return NULL;
+
+	OurRegions *optr = (OurRegions *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(OurRegions));
+	if (optr == NULL) {
+		__asm int 3
+		ExitProcess(0);
+	}
+	optr->Address = Address;
+	optr->Size = OUR_SIZE;
+
+	optr->next = ourregions;
+	ourregions = optr;
+
+	return Address;
+}
+
+
+// our allocators so we can drop in replace in IAT
+BOOL __stdcall myHeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem) {
+	return CustomHeapFree(cinfo, (DWORD_PTR)lpMem);
+}
+LPVOID __stdcall myHeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes) {
+	return CustomHeapAlloc(cinfo,dwBytes);
+}
+
+CustomHeapArea *CustomArea_init(ClientThreadInfo *tinfo, DWORD_PTR RangeStart, DWORD_PTR Size) {
+	
+	CustomHeapArea *aptr = (CustomHeapArea *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(CustomHeapArea));
+	if (aptr == NULL) {
+		__asm int 3
+			ExitProcess(0);
+	}
+	
+	
+	aptr->next = (CustomHeapArea *)tinfo->memory_areas;
+	tinfo->memory_areas = (void *)aptr;
+	
+	//LeaveCriticalSection(&tinfo->CSmemory);
+	
+	return aptr;
+}
+
+
+
+
+// separate our memory for usage within the application
+void SetupMemory(ClientThreadInfo *tinfo, DWORD_PTR RangeStart, DWORD_PTR Size) {
+
+	CustomHeapArea *aptr = CustomArea_init(tinfo, RangeStart, Size);
+	// setup base for all memory..
+	if (aptr == NULL) {
+		__asm int 3
+		ExitProcess(0);
+	}
+
+	// set stack to start 32kb under the high part of the memory.. no real reason..for the 32kb
+	tinfo->StackHigh = (RangeStart + Size) - (1024 * 32);
+	// lets give it 5 megabytes.. we should split this up later for multiple threads.. maybe separate heap/stack
+	tinfo->StackLow = tinfo->StackHigh - (1024 * 1024 * 5);
+
+	// lets spray stack with the BP just in case something leaks or fails ..we can see how/why (maybe)
+	//DWORD_PTR StackEndBP = (DWORD_PTR)&break_stack_end;
+/*	DWORD_PTR *Set = (DWORD_PTR *)tinfo->StackHigh;
+	while ((DWORD_PTR)Set > (DWORD_PTR)tinfo->StackLow) {
+		*Set = StackEndBP;
+	}
+*/
+	// now for heap...
+	aptr->HeapMax = tinfo->StackLow - (1024 * 32);
+	aptr->HeapBase = RangeStart;
+	// new!
+	aptr->HeapLast = 0;
+
+	ShadowRegion *rptr = (ShadowRegion *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ShadowRegion));
+	if (rptr != NULL) {
+		rptr->address = RangeStart;
+		rptr->size = Size;
+		rptr->verify = 1;
+		tinfo->ShadowMem = rptr;
+
+		rptr->next = tinfo->ShadowList;
+		tinfo->ShadowList = rptr;
+	}
+	else {
+		__asm int 3
+		ExitProcess(0);
+	}
+
+	//LeaveCriticalSection(&tinfo->CSmemory);
+}
 
 
 
@@ -317,6 +426,20 @@ int Thread_InitProxy(void *param) {
 	chksum_crc32gentab();
 	
 	InitializeCriticalSection(&CS_ThreadData);
+
+	// our 'client' structure used this.. so we have to allocate so we can keep the same code base
+	// *** FIX when this gets merged together due to us having to hook all API for simulation
+	// protocol logs... figure out another way
+	cinfo = (ClientThreadInfo *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ClientThreadInfo));
+	if (cinfo == NULL) {
+		ExitProcess(0);
+	}
+
+	DWORD_PTR RangeStart = OurNew();
+	if (!RangeStart) {
+		ExitProcess(0);
+	}
+	SetupMemory(cinfo, RangeStart, OUR_SIZE);
 	
 	
 	WSADATA wsaData;
